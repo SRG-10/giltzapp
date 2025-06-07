@@ -77,7 +77,8 @@ class _AuthPageState extends State<AuthPage> {
   bool get _hasLower => _regPasswordController.text.contains(RegExp(r'[a-z]'));
   bool get _hasDigit => _regPasswordController.text.contains(RegExp(r'\d'));
 
-  void _toggleForm() {
+  void _toggleForm() { // Cambia entre login y registro
+    if (_isLoading) return; // Evita cambios si está cargando
     setState(() {
       _isLogin = !_isLogin;
       _errorMessage = null;
@@ -87,7 +88,8 @@ class _AuthPageState extends State<AuthPage> {
     });
   }
 
-  void limpiarCampos() {
+  void limpiarCampos() { // Limpia todos los campos de texto
+    _loginPasswordVisible = false;
     _emailController.clear();
     _passwordController.clear();
     _usernameController.clear();
@@ -96,7 +98,8 @@ class _AuthPageState extends State<AuthPage> {
     _regConfirmPasswordController.clear();
   }
 
-  Future<void> _submitLogin() async {
+  Future<void> _submitLogin() async { // Maneja el inicio de sesión
+    if (_isLoading) return; // Evita múltiples envíos
     if (_formKeyLogin.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -133,7 +136,8 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
-  Future<void> _submitRegister() async {
+  Future<void> _submitRegister() async { // Maneja el registro de usuario
+    if (_isLoading) return; // Evita múltiples envíos
     if (_formKeyRegister.currentState!.validate() &&
         _minLength && _hasUpper && _hasLower && _hasDigit) {
       setState(() {
@@ -160,6 +164,7 @@ class _AuthPageState extends State<AuthPage> {
         final response = await supabase.auth.signUp(
           email: _regEmailController.text,
           password: _regPasswordController.text,
+          emailRedirectTo: 'https://srg-10.github.io/giltzapp_web/', // Cambia esto por tu URL de redirección
           data: {
             'username': _usernameController.text,
           },
@@ -204,7 +209,8 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   @override
-  void dispose() {
+  void dispose() { // Limpia los controladores al eliminar el widget
+    _loginPasswordVisible = false;
     _emailController.dispose();
     _passwordController.dispose();
     _usernameController.dispose();
@@ -215,7 +221,8 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { // Construye la interfaz de usuario
+    // Si el usuario ya está autenticado, redirige a la página de inicio
     return Scaffold(
       appBar: AppBar(
         title: Text(_isLogin ? 'Iniciar sesión' : 'Registrarse'),
@@ -240,7 +247,8 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
-  Widget _buildLoginForm() {
+  Widget _buildLoginForm() { // Construye el formulario de inicio de sesión
+    _errorMessage = null; // Resetea el mensaje de error al construir el formulario
     return Form(
       key: _formKeyLogin,
       child: Column(
@@ -324,7 +332,8 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
-  Widget _buildRegisterForm() {
+  Widget _buildRegisterForm() { // Construye el formulario de registro
+    _errorMessage = null; // Resetea el mensaje de error al construir el formulario
     return Form(
       key: _formKeyRegister,
       child: Column(
@@ -450,7 +459,8 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
-  Widget _buildPasswordRequirements() {
+  Widget _buildPasswordRequirements() { // Construye los requisitos de la contraseña
+    if (_regPasswordController.text.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -468,7 +478,8 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
-  Widget _buildRequirementRow(String text, bool met) {
+  Widget _buildRequirementRow(String text, bool met) { // Construye una fila para cada requisito de contraseña
+    if (text.isEmpty) return const SizedBox.shrink();
     return Row(
       children: [
         Icon(
