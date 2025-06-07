@@ -7,6 +7,7 @@ import 'home_page.dart';
 //import 'dart:io' show Platform;
 
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
@@ -498,4 +499,34 @@ class _AuthPageState extends State<AuthPage> {
       ],
     );
   }
+
+  @override
+void initState() {
+  // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
+  super.initState();
+  _handleEmailConfirmation();
+}
+
+Future<void> _handleEmailConfirmation() async {
+  final uri = Uri.base;
+  final code = uri.queryParameters['code'];
+  if (code != null) {
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.auth.exchangeCodeForSession(code);
+      // Ahora el usuario está autenticado, puedes redirigirlo a la home o mostrar un mensaje
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomePage(email: supabase.auth.currentUser?.email ?? ''),
+        ),
+      );
+    } catch (e) {
+      // Maneja el error si el código es inválido o expiró
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al confirmar el correo: $e')),
+      );
+    }
+  }
+}
 }
