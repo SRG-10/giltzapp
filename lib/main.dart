@@ -73,71 +73,99 @@ class _AuthPageState extends State<AuthPage> {
   String? _errorMessage;
 
   // Requisitos de contraseña
-  bool get _minLength => _regPasswordController.text.length >= 6;
+  bool get _minLength => _regPasswordController.text.length >= 12;
   bool get _hasUpper => _regPasswordController.text.contains(RegExp(r'[A-Z]'));
   bool get _hasLower => _regPasswordController.text.contains(RegExp(r'[a-z]'));
   bool get _hasDigit => _regPasswordController.text.contains(RegExp(r'\d'));
+  bool get _hasSpecial => _regPasswordController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
 
-  void _toggleForm() { // Cambia entre login y registro
-    if (_isLoading) return; // Evita cambios si está cargando
+
+
+  void _toggleForm() {
+  if (_isLoading) return;
+  
+  // Primero actualiza el estado para cambiar de formulario
+  setState(() {
+    _isLogin = !_isLogin;
+    _errorMessage = null;
+  });
+
+  // Limpia solo los campos relevantes después de la actualización
+  _regPasswordController.clear();
+  _regConfirmPasswordController.clear();
+  _usernameController.clear();
+  _regEmailController.clear();
+  _emailController.clear();
+  _passwordController.clear();
+}
+
+
+  void limpiarCampos() {
+  _loginPasswordVisible = false;
+  _emailController.clear();
+  _passwordController.clear();
+}
+
+  Future<void> _submitLogin() async {
+  if (_isLoading) return;
+  if (_formKeyLogin.currentState!.validate()) {
     setState(() {
-      _isLogin = !_isLogin;
+      _isLoading = true;
       _errorMessage = null;
-      _regPasswordController.clear();
-      _regConfirmPasswordController.clear();
-      limpiarCampos();
     });
-  }
-
-  void limpiarCampos() { // Limpia todos los campos de texto
-    _loginPasswordVisible = false;
-    _emailController.clear();
-    _passwordController.clear();
-    _usernameController.clear();
-    _regEmailController.clear();
-    _regPasswordController.clear();
-    _regConfirmPasswordController.clear();
-  }
-
-  Future<void> _submitLogin() async { // Maneja el inicio de sesión
-    if (_isLoading) return; // Evita múltiples envíos
-    if (_formKeyLogin.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-      try {
-        final supabase = Supabase.instance.client;
-        final response = await supabase.auth.signInWithPassword(
-          email: _emailController.text,
-          password: _passwordController.text,
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase.auth.signInWithPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      if (response.user != null) {
+        limpiarCampos();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomePage(email: response.user!.email),
+          ),
         );
-        if (response.user != null) {
-          limpiarCampos();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HomePage(email: response.user!.email),
-            ),
-          );
-        }
-      } on AuthException catch (error) {
-        setState(() {
-          _errorMessage = error.message;
-        });
-      } catch (e) {
-        setState(() {
-          _errorMessage = 'Error inesperado durante el login';
-        });
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
       }
+    } on AuthException catch (error) {
+      // Mostrar el error en un AlertDialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error de inicio de sesión'),
+          content: Text(error.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      setState(() {
+        _errorMessage = error.message;
+      });
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text('Error inesperado'),
+          content: Text('Error inesperado durante el login'),
+        ),
+      );
+      setState(() {
+        _errorMessage = 'Error inesperado durante el login';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
+}
 
-  Future<void> _submitRegister() async { // Maneja el registro de usuario
+  Future<void> _submitRegister() async {
     if (_isLoading) return; // Evita múltiples envíos
     if (_formKeyRegister.currentState!.validate() &&
         _minLength && _hasUpper && _hasLower && _hasDigit) {
@@ -152,51 +180,106 @@ class _AuthPageState extends State<AuthPage> {
             .from('users')
             .select()
             .or('correo_electronico.eq.${_regEmailController.text},nombre_usuario.eq.${_usernameController.text}')
-          .maybeSingle();
+            .maybeSingle();
 
         if (existing != null) {
           setState(() {
             _errorMessage = 'El correo electrónico o el nombre de usuario ya están en uso.';
-            _isLoading = false;
           });
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Error de registro'),
+              content: Text(_errorMessage!),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
           return;
         }
 
         final response = await supabase.auth.signUp(
           email: _regEmailController.text,
           password: _regPasswordController.text,
-          emailRedirectTo: 'https://srg-10.github.io/giltzapp_web/', // Cambia esto por tu URL de redirección
+          emailRedirectTo: 'giltzapp.vercel.app', // Cambia esto por tu URL de redirección
           data: {
             'username': _usernameController.text,
           },
         );
         if (response.user != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta.')),
-          );
           final hash = sha256.convert(utf8.encode(_regPasswordController.text)).toString();
-          // Inserta el usuario en la tabla public.users
-          // ignore: unused_local_variable
           await supabase.from('users').insert({
             'nombre_usuario': _usernameController.text,
             'correo_electronico': _regEmailController.text,
             'hash_contrasena_maestra': hash,
           });
-          // Puedes manejar errores aquí si insertResponse tiene error
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta.')),
+            const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta. También consulta la carpeta de spam.')),
           );
-          _toggleForm();
-
+          setState(() {
+            _isLogin = true;
+          });
+          // Solo limpiar los campos de registro, no los de login
+          _regPasswordController.clear();
+          _regConfirmPasswordController.clear();
+          _usernameController.clear();
+          _regEmailController.clear();
         }
       } on AuthException catch (error) {
+        String mensaje;
+        // Intenta decodificar el mensaje si es un JSON
+        try {
+          final decoded = jsonDecode(error.message);
+          if (decoded is Map && decoded['message'] == 'Error sending confirmation email') {
+            mensaje = 'No se pudo enviar el correo de confirmación.';
+          } else {
+            mensaje = decoded['message'] ?? 'Error desconocido durante el registro.';
+          }
+        } catch (_) {
+          // Si no es un JSON, usa el mensaje original
+          if (error.message.contains('Error sending confirmation email')) {
+            mensaje = 'No se pudo enviar el correo de confirmación.';
+          } else {
+            mensaje = error.message;
+          }
+        }
         setState(() {
-          _errorMessage = error.message;
+          _errorMessage = mensaje;
         });
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Error de registro'),
+            content: Text(mensaje),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
       } catch (e) {
         setState(() {
           _errorMessage = 'Error inesperado durante el registro';
         });
+        showDialog(
+          context: context,
+          builder: (context) => const AlertDialog(
+            title: Text('Error inesperado'),
+            content: Text('Ha ocurrido un error inesperado durante el registro.'),
+            actions: [
+              TextButton(
+                onPressed: null, // O Navigator.of(context).pop()
+                child: Text('OK'),
+              ),
+            ],
+          ),
+        );
       } finally {
         setState(() {
           _isLoading = false;
@@ -208,6 +291,9 @@ class _AuthPageState extends State<AuthPage> {
       });
     }
   }
+
+
+
 
   @override
   void dispose() { // Limpia los controladores al eliminar el widget
@@ -248,6 +334,12 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
+  final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
+  // Expresión regular para validar correos electrónicos
+  final RegExp passwordRegex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~.,;:_\-+=?¿¡!%/(){}\[\]]).{12,}$');
+
+
+
   Widget _buildLoginForm() { // Construye el formulario de inicio de sesión
     _errorMessage = null; // Resetea el mensaje de error al construir el formulario
     return Form(
@@ -267,7 +359,7 @@ class _AuthPageState extends State<AuthPage> {
               if (value == null || value.isEmpty) {
                 return 'Por favor ingresa tu correo';
               }
-              if (!value.contains('@')) {
+              if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
                 return 'Ingresa un correo válido';
               }
               return null;
@@ -295,9 +387,6 @@ class _AuthPageState extends State<AuthPage> {
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Por favor ingresa tu contraseña';
-              }
-              if (value.length < 6) {
-                return 'La contraseña debe tener al menos 6 caracteres';
               }
               return null;
             },
@@ -367,7 +456,7 @@ class _AuthPageState extends State<AuthPage> {
               if (value == null || value.isEmpty) {
                 return 'Por favor ingresa tu correo';
               }
-              if (!value.contains('@')) {
+              if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
                 return 'Ingresa un correo válido';
               }
               return null;
@@ -471,10 +560,11 @@ class _AuthPageState extends State<AuthPage> {
           style: TextStyle(fontSize: 13, color: Colors.grey),
         ),
         const SizedBox(height: 4),
-        _buildRequirementRow("Al menos 6 caracteres", _minLength),
+        _buildRequirementRow("Al menos 12 caracteres", _minLength),
         _buildRequirementRow("Una letra mayúscula", _hasUpper),
         _buildRequirementRow("Una letra minúscula", _hasLower),
         _buildRequirementRow("Un número", _hasDigit),
+        _buildRequirementRow("Un carácter especial", _hasSpecial),
       ],
     );
   }
