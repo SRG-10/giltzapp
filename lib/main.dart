@@ -16,7 +16,7 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatelessWidget{
   const MyApp({super.key});
 
   @override
@@ -41,7 +41,6 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (context) => const AuthPage(),
-        '/reset-password': (context) => const ResetPasswordPage(),
       },
       onGenerateRoute: (settings) {
         // Maneja rutas no definidas (opcional)
@@ -93,93 +92,92 @@ class _AuthPageState extends State<AuthPage> {
   bool get _hasSpecial => _regPasswordController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
 
   void _toggleForm() {
-  if (_isLoading) return;
-  
-  // Primero actualiza el estado para cambiar de formulario
-  setState(() {
-    _isLogin = !_isLogin;
-    _errorMessage = null;
-  });
+    if (_isLoading) return;
+    
+    // Primero actualiza el estado para cambiar de formulario
+    setState(() {
+      _isLogin = !_isLogin;
+      _errorMessage = null;
+    });
 
-  // Limpia solo los campos relevantes después de la actualización
-  _regPasswordController.clear();
-  _regConfirmPasswordController.clear();
-  _usernameController.clear();
-  _regEmailController.clear();
-  _emailController.clear();
-  _passwordController.clear();
+    // Limpia solo los campos relevantes después de la actualización
+    _regPasswordController.clear();
+    _regConfirmPasswordController.clear();
+    _usernameController.clear();
+    _regEmailController.clear();
+    _emailController.clear();
+    _passwordController.clear();
   }
 
 
   void limpiarCampos() {
-  _loginPasswordVisible = false;
-  _emailController.clear();
-  _passwordController.clear();
+    _loginPasswordVisible = false;
+    _emailController.clear();
+    _passwordController.clear();
   }
 
   Future<void> _submitLogin() async {
-  if (_isLoading) return;
-  if (_formKeyLogin.currentState!.validate()) {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      final supabase = Supabase.instance.client;
-      final response = await supabase.auth.signInWithPassword(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
-      if (response.user != null) {
-        limpiarCampos();
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => HomePage(email: response.user!.email),
+    if (_isLoading) return;
+    if (_formKeyLogin.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+      try {
+        final supabase = Supabase.instance.client;
+        final response = await supabase.auth.signInWithPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+        if (response.user != null) {
+          limpiarCampos();
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HomePage(email: response.user!.email),
+            ),
+          );
+        }
+      } on AuthException catch (error) {
+        // Mostrar el error en un AlertDialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Error de inicio de sesión'),
+            content: Text(error.message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
+        setState(() {
+          _errorMessage = error.message;
+        });
+      } catch (e) {
+        showDialog(
+          context: context,
+          builder: (context) => const AlertDialog(
+            title: Text('Error inesperado'),
+            content: Text('Error inesperado durante el login'),
+          ),
+        );
+        setState(() {
+          _errorMessage = 'Error inesperado durante el login';
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
       }
-    } on AuthException catch (error) {
-      // Mostrar el error en un AlertDialog
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Error de inicio de sesión'),
-          content: Text(error.message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      setState(() {
-        _errorMessage = error.message;
-      });
-    } catch (e) {
-      showDialog(
-        context: context,
-        builder: (context) => const AlertDialog(
-          title: Text('Error inesperado'),
-          content: Text('Error inesperado durante el login'),
-        ),
-      );
-      setState(() {
-        _errorMessage = 'Error inesperado durante el login';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
-  }
   }
 
   Future<void> _submitRegister() async {
     if (_isLoading) return; // Evita múltiples envíos
-    if (_formKeyRegister.currentState!.validate() &&
-        _minLength && _hasUpper && _hasLower && _hasDigit) {
+    if (_formKeyRegister.currentState!.validate() && _minLength && _hasUpper && _hasLower && _hasDigit) {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -303,9 +301,6 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
-
-
-
   @override
   void dispose() { // Limpia los controladores al eliminar el widget
     _loginPasswordVisible = false;
@@ -318,9 +313,43 @@ class _AuthPageState extends State<AuthPage> {
     super.dispose();
   }
 
+  final _resetFormKey = GlobalKey<FormState>();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _resetLoading = false;
+
   @override
-  Widget build(BuildContext context) { // Construye la interfaz de usuario
-    // Si el usuario ya está autenticado, redirige a la página de inicio
+  Widget build(BuildContext context) {
+    if (_showResetPassword) {
+      // Muestra el formulario de reseteo
+      return Scaffold(
+        appBar: AppBar(title: const Text('Restablecer contraseña')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _resetError != null
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_resetError!, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _showResetPassword = false;
+                            _resetError = null;
+                          });
+                        },
+                        child: const Text('Volver al login'),
+                      ),
+                    ],
+                  )
+                : _buildResetPasswordForm(), // Tu formulario de reseteo
+          ),
+        ),
+      );
+    }
+    // Si no es reseteo, muestra login o registro
     return Scaffold(
       appBar: AppBar(
         title: Text(_isLogin ? 'Iniciar sesión' : 'Registrarse'),
@@ -345,102 +374,195 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
+  Widget _buildResetPasswordForm() {
+    return Form(
+      key: _resetFormKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: _newPasswordController,
+            decoration: const InputDecoration(labelText: 'Nueva contraseña', prefixIcon: Icon(Icons.lock), border: OutlineInputBorder()),
+            obscureText: true,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor ingresa la nueva contraseña';
+              }
+              if (value.length < 12) {
+                return 'La contraseña debe tener al menos 12 caracteres';
+              }
+              if (!RegExp(r'[A-Z]').hasMatch(value)) {
+                return 'Debe contener al menos una letra mayúscula';
+              }
+              if (!RegExp(r'[a-z]').hasMatch(value)) {
+                return 'Debe contener al menos una letra minúscula';
+              }
+              if (!RegExp(r'\d').hasMatch(value)) {
+                return 'Debe contener al menos un número';
+              }
+              if (!RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]''').hasMatch(value)) {
+                return 'Debe contener al menos un carácter especial';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _confirmPasswordController,
+            decoration: const InputDecoration(labelText: 'Confirmar contraseña', prefixIcon: Icon(Icons.lock_outline), border: OutlineInputBorder()),
+            obscureText: true,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor confirma la contraseña';
+              }
+              if (value != _newPasswordController.text) {
+                return 'Las contraseñas no coinciden';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _resetLoading ? null : _submitResetPassword,
+              child: _resetLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Actualizar contraseña'),
+            )
+          )
+        ],
+      )
+    );
+  }
+
+  Future<void> _submitResetPassword() async {
+    if (!_resetFormKey.currentState!.validate()) return;
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.auth.exchangeCodeForSession(_resetCode!);
+      final respone = await supabase.auth.updateUser(
+        UserAttributes(password: _newPasswordController.text),
+      );
+      if (respone.user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contraseña actualizada correctamente.')),
+        );
+        setState(() {
+          _showResetPassword = false; // Vuelve al login
+          _newPasswordController.clear();
+          _confirmPasswordController.clear();
+        });
+      }
+    } on AuthException catch (e) {
+      setState(() => _resetError = e.message);
+    } catch (e) {
+      setState(() {
+        _resetError = 'Error inesperado al actualizar la contraseña.';
+      });
+    } finally {
+      setState(() => _resetLoading = false);
+    }
+  }
+
   final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
   // Expresión regular para validar correos electrónicos
   final RegExp passwordRegex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~.,;:_\-+=?¿¡!%/(){}\[\]]).{12,}$');
 
-
-
   Widget _buildLoginForm() { // Construye el formulario de inicio de sesión
-  _errorMessage = null; // Resetea el mensaje de error al construir el formulario
-  return Form(
-    key: _formKeyLogin,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: _emailController,
-          decoration: const InputDecoration(
-            labelText: 'Correo electrónico',
-            prefixIcon: Icon(Icons.email),
-            border: OutlineInputBorder(),
+    _errorMessage = null; // Resetea el mensaje de error al construir el formulario
+    return Form(
+      key: _formKeyLogin,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: _emailController,
+            decoration: const InputDecoration(
+              labelText: 'Correo electrónico',
+              prefixIcon: Icon(Icons.email),
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.emailAddress,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor ingresa tu correo';
+              }
+              if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
+                return 'Ingresa un correo válido';
+              }
+              return null;
+            },
           ),
-          keyboardType: TextInputType.emailAddress,
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Por favor ingresa tu correo';
-            }
-            if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
-              return 'Ingresa un correo válido';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _passwordController,
-          decoration: InputDecoration(
-            labelText: 'Contraseña',
-            prefixIcon: const Icon(Icons.lock),
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _loginPasswordVisible ? Icons.visibility_off : Icons.visibility,
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordController,
+            decoration: InputDecoration(
+              labelText: 'Contraseña',
+              prefixIcon: const Icon(Icons.lock),
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _loginPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _loginPasswordVisible = !_loginPasswordVisible;
+                  });
+                },
               ),
-              onPressed: () {
-                setState(() {
-                  _loginPasswordVisible = !_loginPasswordVisible;
-                });
-              },
+            ),
+            obscureText: !_loginPasswordVisible,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor ingresa tu contraseña';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 24),
+          if (_errorMessage != null)
+            Text(
+              _errorMessage!,
+              style: const TextStyle(color: Colors.red),
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submitLogin,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Iniciar sesión'),
             ),
           ),
-          obscureText: !_loginPasswordVisible,
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Por favor ingresa tu contraseña';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 24),
-        if (_errorMessage != null)
-          Text(
-            _errorMessage!,
-            style: const TextStyle(color: Colors.red),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: _isLoading ? null : _showForgotPasswordDialog,
+                child: const Text('¿Olvidaste tu contraseña?'),
+              ),
+              TextButton(
+                onPressed: _isLoading ? null : _toggleForm,
+                child: const Text('Regístrate'),
+              ),
+            ],
           ),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _submitLogin,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Iniciar sesión'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            TextButton(
-              onPressed: _isLoading ? null : _showForgotPasswordDialog,
-              child: const Text('¿Olvidaste tu contraseña?'),
-            ),
-            TextButton(
-              onPressed: _isLoading ? null : _toggleForm,
-              child: const Text('Regístrate'),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
   }
 
 
@@ -511,10 +633,8 @@ class _AuthPageState extends State<AuthPage> {
       },
     ),
   );
+
 }
-
-
-
 
 Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
   setState(() => _isLoading = true);
@@ -729,7 +849,24 @@ Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
 void initState() {
   // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
   super.initState();
+  _checkForPasswordReset();
   //_handleEmailConfirmation();
+}
+
+bool _showResetPassword = false;
+String? _resetCode;
+String? _resetError;
+
+void _checkForPasswordReset() {
+  final uri = Uri.base;
+  if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+    setState(() {
+      _showResetPassword = true;
+      _resetCode = uri.queryParameters['code'];
+    });
+  }
+}
+
 }
 
 /*Future<void> _handleEmailConfirmation() async {
@@ -754,4 +891,4 @@ void initState() {
     }
   }
 }*/
-}
+
