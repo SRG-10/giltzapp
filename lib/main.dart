@@ -5,8 +5,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'home_page.dart'; 
 //import 'dart:io' show Platform;
-
-
+import 'pages/reset_password_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,10 +38,24 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const AuthPage(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const AuthPage(),
+        '/reset-password': (context) => const ResetPasswordPage(),
+      },
+      onGenerateRoute: (settings) {
+        // Maneja rutas no definidas (opcional)
+        return MaterialPageRoute(
+          builder: (context) => const Scaffold(
+            body: Center(child: Text('Página no encontrada')),
+          ),
+        );
+      },
     );
   }
 }
+
+
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -79,8 +92,6 @@ class _AuthPageState extends State<AuthPage> {
   bool get _hasDigit => _regPasswordController.text.contains(RegExp(r'\d'));
   bool get _hasSpecial => _regPasswordController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
 
-
-
   void _toggleForm() {
   if (_isLoading) return;
   
@@ -97,14 +108,14 @@ class _AuthPageState extends State<AuthPage> {
   _regEmailController.clear();
   _emailController.clear();
   _passwordController.clear();
-}
+  }
 
 
   void limpiarCampos() {
   _loginPasswordVisible = false;
   _emailController.clear();
   _passwordController.clear();
-}
+  }
 
   Future<void> _submitLogin() async {
   if (_isLoading) return;
@@ -163,7 +174,7 @@ class _AuthPageState extends State<AuthPage> {
       });
     }
   }
-}
+  }
 
   Future<void> _submitRegister() async {
     if (_isLoading) return; // Evita múltiples envíos
@@ -341,86 +352,210 @@ class _AuthPageState extends State<AuthPage> {
 
 
   Widget _buildLoginForm() { // Construye el formulario de inicio de sesión
-    _errorMessage = null; // Resetea el mensaje de error al construir el formulario
-    return Form(
-      key: _formKeyLogin,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextFormField(
-            controller: _emailController,
-            decoration: const InputDecoration(
-              labelText: 'Correo electrónico',
-              prefixIcon: Icon(Icons.email),
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.emailAddress,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor ingresa tu correo';
-              }
-              if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
-                return 'Ingresa un correo válido';
-              }
-              return null;
-            },
+  _errorMessage = null; // Resetea el mensaje de error al construir el formulario
+  return Form(
+    key: _formKeyLogin,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          controller: _emailController,
+          decoration: const InputDecoration(
+            labelText: 'Correo electrónico',
+            prefixIcon: Icon(Icons.email),
+            border: OutlineInputBorder(),
           ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _passwordController,
-            decoration: InputDecoration(
-              labelText: 'Contraseña',
-              prefixIcon: const Icon(Icons.lock),
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _loginPasswordVisible ? Icons.visibility_off : Icons.visibility,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _loginPasswordVisible = !_loginPasswordVisible;
-                  });
-                },
+          keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor ingresa tu correo';
+            }
+            if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
+              return 'Ingresa un correo válido';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _passwordController,
+          decoration: InputDecoration(
+            labelText: 'Contraseña',
+            prefixIcon: const Icon(Icons.lock),
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _loginPasswordVisible ? Icons.visibility_off : Icons.visibility,
               ),
-            ),
-            obscureText: !_loginPasswordVisible,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor ingresa tu contraseña';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 24),
-          if (_errorMessage != null)
-            Text(
-              _errorMessage!,
-              style: const TextStyle(color: Colors.red),
-            ),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _submitLogin,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Iniciar sesión'),
+              onPressed: () {
+                setState(() {
+                  _loginPasswordVisible = !_loginPasswordVisible;
+                });
+              },
             ),
           ),
+          obscureText: !_loginPasswordVisible,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor ingresa tu contraseña';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 24),
+        if (_errorMessage != null)
+          Text(
+            _errorMessage!,
+            style: const TextStyle(color: Colors.red),
+          ),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _submitLogin,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Iniciar sesión'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: _isLoading ? null : _showForgotPasswordDialog,
+              child: const Text('¿Olvidaste tu contraseña?'),
+            ),
+            TextButton(
+              onPressed: _isLoading ? null : _toggleForm,
+              child: const Text('Regístrate'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+  }
+
+
+  void _showForgotPasswordDialog() {
+  final _forgotEmailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  String? _emailError;
+
+  showDialog(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('Recuperar contraseña'),
+          content: Form(
+            key: _formKey,
+            child: TextFormField(
+              controller: _forgotEmailController,
+              decoration: InputDecoration(
+                labelText: 'Correo electrónico',
+                prefixIcon: const Icon(Icons.email),
+                errorText: _emailError,
+              ),
+              keyboardType: TextInputType.emailAddress,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Ingresa tu correo';
+                }
+                if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
+                  return 'Correo no válido';
+                }
+                return _emailError; // Muestra el error de existencia aquí
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (_formKey.currentState!.validate()) {
+                  final email = _forgotEmailController.text.trim();
+                  
+                  // Verificar si el correo existe en Supabase
+                  final supabase = Supabase.instance.client;
+                  final response = await supabase
+                      .from('users')
+                      .select()
+                      .eq('correo_electronico', email)
+                      .maybeSingle();
+
+                  final user = response;
+                  if (user == null) {
+                    setState(() => _emailError = 'Correo no registrado');
+                  } else {
+                    Navigator.pop(context);
+                    _sendPasswordResetEmailAndShowSuccess(email);
+                  }
+                }
+              },
+              child: const Text('Enviar'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+
+
+
+Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
+  setState(() => _isLoading = true);
+  try {
+    final supabase = Supabase.instance.client;
+    await supabase.auth.resetPasswordForEmail(
+      email,
+      redirectTo: 'https://giltzapp.vercel.app/reset-password', // Tu URL de recuperación
+    );
+    // Muestra mensaje de éxito tipo registro y vuelve al login
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Correo enviado. Revisa tu correo para restablecer la contraseña. También consulta la carpeta de spam.'),
+        duration: Duration(seconds: 5),
+      ),
+    );
+    if (!_isLogin) {
+      setState(() {
+        _isLogin = true; // Cambia a la pantalla de login
+      });
+    }
+  } on AuthException catch (error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(error.message),
+        actions: [
           TextButton(
-            onPressed: _isLoading ? null : _toggleForm,
-            child: const Text('¿No tienes cuenta? Regístrate'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
           ),
         ],
       ),
     );
+  } finally {
+    setState(() => _isLoading = false);
   }
+}
+
+
 
   Widget _buildRegisterForm() { // Construye el formulario de registro
     _errorMessage = null; // Resetea el mensaje de error al construir el formulario
