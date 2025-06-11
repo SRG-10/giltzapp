@@ -383,70 +383,105 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Widget _buildResetPasswordForm() {
-    return Form(
-      key: _resetFormKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextFormField(
-            controller: _newPasswordController,
-            decoration: const InputDecoration(labelText: 'Nueva contraseña', prefixIcon: Icon(Icons.lock), border: OutlineInputBorder()),
-            obscureText: true,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor ingresa la nueva contraseña';
-              }
-              if (value.length < 12) {
-                return 'La contraseña debe tener al menos 12 caracteres';
-              }
-              if (!RegExp(r'[A-Z]').hasMatch(value)) {
-                return 'Debe contener al menos una letra mayúscula';
-              }
-              if (!RegExp(r'[a-z]').hasMatch(value)) {
-                return 'Debe contener al menos una letra minúscula';
-              }
-              if (!RegExp(r'\d').hasMatch(value)) {
-                return 'Debe contener al menos un número';
-              }
-              if (!RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]''').hasMatch(value)) {
-                return 'Debe contener al menos un carácter especial';
-              }
-              return null;
-            },
+  return Form(
+    key: _resetFormKey,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          controller: _newPasswordController,
+          decoration: const InputDecoration(
+            labelText: 'Nueva contraseña',
+            prefixIcon: Icon(Icons.lock),
+            border: OutlineInputBorder(),
           ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _confirmPasswordController,
-            decoration: const InputDecoration(labelText: 'Confirmar contraseña', prefixIcon: Icon(Icons.lock_outline), border: OutlineInputBorder()),
-            obscureText: true,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor confirma la contraseña';
-              }
-              if (value != _newPasswordController.text) {
-                return 'Las contraseñas no coinciden';
-              }
-              return null;
-            },
+          obscureText: true,
+          onChanged: (_) => setState(() {}),
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Ingresa la nueva contraseña';
+            if (!_minLengthReset) return 'Mínimo 12 caracteres';
+            if (!_hasUpperReset) return 'Al menos una mayúscula';
+            if (!_hasLowerReset) return 'Al menos una minúscula';
+            if (!_hasDigitReset) return 'Al menos un número';
+            if (!_hasSpecialReset) return 'Al menos un carácter especial';
+            return null;
+          },
+        ),
+        if (_newPasswordController.text.isNotEmpty) _buildPasswordRequirementsReset(),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _confirmPasswordController,
+          decoration: const InputDecoration(
+            labelText: 'Confirmar contraseña',
+            prefixIcon: Icon(Icons.lock_outline),
+            border: OutlineInputBorder(),
           ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _resetLoading ? null : _submitResetPassword,
-              child: _resetLoading
+          obscureText: true,
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Confirma la contraseña';
+            if (value != _newPasswordController.text) return 'Las contraseñas no coinciden';
+            return null;
+          },
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _resetLoading ? null : _submitResetPassword,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+              textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: _resetLoading
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : const Text('Actualizar contraseña'),
-            )
-          )
-        ],
-      )
-    );
-  }
+          ),
+        )
+      ],
+    ),
+  );
+}
+
+// Añade estas variables en tu estado
+bool get _minLengthReset => _newPasswordController.text.length >= 12;
+bool get _hasUpperReset => _newPasswordController.text.contains(RegExp(r'[A-Z]'));
+bool get _hasLowerReset => _newPasswordController.text.contains(RegExp(r'[a-z]'));
+bool get _hasDigitReset => _newPasswordController.text.contains(RegExp(r'\d'));
+bool get _hasSpecialReset => _newPasswordController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
+
+Widget _buildPasswordRequirementsReset() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 8),
+      const Text(
+        "La contraseña debe contener:",
+        style: TextStyle(fontSize: 13, color: Colors.grey),
+      ),
+      const SizedBox(height: 4),
+      _buildRequirementRow("Al menos 12 caracteres", _minLengthReset),
+      _buildRequirementRow("Una letra mayúscula", _hasUpperReset),
+      _buildRequirementRow("Una letra minúscula", _hasLowerReset),
+      _buildRequirementRow("Un número", _hasDigitReset),
+      _buildRequirementRow("Un carácter especial", _hasSpecialReset),
+    ],
+  );
+}
+
+
+
 
   Future<void> _submitResetPassword() async {
     if (!_resetFormKey.currentState!.validate()) return;
