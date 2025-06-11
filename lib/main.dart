@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
-// ignore: depend_on_referenced_packages
 import 'package:crypto/crypto.dart';
 import 'home_page.dart'; 
-//import 'dart:io' show Platform;
-import 'pages/reset_password_page.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
     url: 'https://abioxiwzcrsemxllqznq.supabase.co',        
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiaW94aXd6Y3JzZW14bGxxem5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNDAzOTgsImV4cCI6MjA2NDgxNjM5OH0.1xFPpUgEOJZPHnpbYm4GyQvjzCqptIcOO1dGEausiz8', 
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiaW94aXd6Y3JzZW14bGxxem5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNDAzOTgsImV4cCI6MjA2NDgxNjM5OH0.1xFPpUgEOJZPHnpbYm4GyQvjzCqptIcOO1dGEausiz8',
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.pkce, // Usa PKCE para mayor seguridad
+    )
   );
   runApp(const MyApp());
 }
@@ -38,10 +39,19 @@ class MyApp extends StatelessWidget{
           ),
         ),
       ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const AuthPage(),
-      },
+      home: StreamBuilder<AuthState>(
+        stream: Supabase.instance.client.auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          // Espera a que la sesión se restaure tras refrescar
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final session = Supabase.instance.client.auth.currentSession;
+          return session != null ? const HomePage() : const AuthPage();
+        },
+      ),
       onGenerateRoute: (settings) {
         // Maneja rutas no definidas (opcional)
         return MaterialPageRoute(
@@ -53,7 +63,6 @@ class MyApp extends StatelessWidget{
     );
   }
 }
-
 
 
 class AuthPage extends StatefulWidget {
@@ -133,9 +142,7 @@ class _AuthPageState extends State<AuthPage> {
           limpiarCampos();
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => HomePage(email: response.user!.email),
-            ),
+            MaterialPageRoute(builder: (context) => const HomePage()), // Sin parámetro
           );
         }
       } on AuthException catch (error) {
@@ -222,6 +229,7 @@ class _AuthPageState extends State<AuthPage> {
         if (response.user != null) {
           final hash = sha256.convert(utf8.encode(_regPasswordController.text)).toString();
           await supabase.from('users').insert({
+            'auth_id': response.user!.id,
             'nombre_usuario': _usernameController.text,
             'correo_electronico': _regEmailController.text,
             'hash_contrasena_maestra': hash,
@@ -566,74 +574,120 @@ class _AuthPageState extends State<AuthPage> {
 
 
   void _showForgotPasswordDialog() {
-  final _forgotEmailController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  String? _emailError;
+    final _forgotEmailController = TextEditingController();
+    final _formKey = GlobalKey<FormState>();
+    String? _emailError;
+    bool _loading = false;
 
-  showDialog(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          title: const Text('Recuperar contraseña'),
-          content: Form(
-            key: _formKey,
-            child: TextFormField(
-              controller: _forgotEmailController,
-              decoration: InputDecoration(
-                labelText: 'Correo electrónico',
-                prefixIcon: const Icon(Icons.email),
-                errorText: _emailError,
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Recuperar contraseña',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _forgotEmailController,
+                        decoration: InputDecoration(
+                          labelText: 'Correo electrónico',
+                          prefixIcon: const Icon(Icons.email),
+                          border: const OutlineInputBorder(),
+                          errorText: _emailError,
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Ingresa tu correo';
+                          }
+                          if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
+                            return 'Correo no válido';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _loading
+                              ? null
+                              : () async {
+                                  setState(() {
+                                    _emailError = null;
+                                    _loading = true;
+                                  });
+                                  if (_formKey.currentState!.validate()) {
+                                    final email = _forgotEmailController.text.trim();
+                                    final supabase = Supabase.instance.client;
+                                    final response = await supabase
+                                        .from('users')
+                                        .select()
+                                        .eq('correo_electronico', email)
+                                        .maybeSingle();
+
+                                    if (response == null) {
+                                      setState(() {
+                                        _emailError = 'Correo no registrado';
+                                        _loading = false;
+                                      });
+                                    } else {
+                                      await _sendPasswordResetEmailAndShowSuccess(email);
+                                      Navigator.pop(context);
+                                    }
+                                  } else {
+                                    setState(() => _loading = false);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: _loading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Enviar'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancelar'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              keyboardType: TextInputType.emailAddress,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Ingresa tu correo';
-                }
-                if (!RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,}$').hasMatch(value)) {
-                  return 'Correo no válido';
-                }
-                return _emailError; // Muestra el error de existencia aquí
-              },
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_formKey.currentState!.validate()) {
-                  final email = _forgotEmailController.text.trim();
-                  
-                  // Verificar si el correo existe en Supabase
-                  final supabase = Supabase.instance.client;
-                  final response = await supabase
-                      .from('users')
-                      .select()
-                      .eq('correo_electronico', email)
-                      .maybeSingle();
-
-                  final user = response;
-                  if (user == null) {
-                    setState(() => _emailError = 'Correo no registrado');
-                  } else {
-                    Navigator.pop(context);
-                    _sendPasswordResetEmailAndShowSuccess(email);
-                  }
-                }
-              },
-              child: const Text('Enviar'),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-
+          );
+        },
+      ),
+    );
   }
+
 
   Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
     setState(() => _isLoading = true);
@@ -876,27 +930,3 @@ class _AuthPageState extends State<AuthPage> {
   }
 
 }
-
-/*Future<void> _handleEmailConfirmation() async {
-  final uri = Uri.base;
-  final code = uri.queryParameters['code'];
-  if (code != null) {
-    try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.exchangeCodeForSession(code);
-      // Ahora el usuario está autenticado, puedes redirigirlo a la home o mostrar un mensaje
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => HomePage(email: supabase.auth.currentUser?.email ?? ''),
-        ),
-      );
-    } catch (e) {
-      // Maneja el error si el código es inválido o expiró
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al confirmar el correo: $e')),
-      );
-    }
-  }
-}*/
-
