@@ -2,7 +2,14 @@
   "rewrites": [
     { 
       "source": "/reset-password", 
-      "destination": "/index.html"
+      "destination": "/index.html",
+      "has": [
+        {
+          "type": "query",
+          "key": "code",
+          "value": "(?<code>.*)"
+        }
+      ]
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

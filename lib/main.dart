@@ -444,7 +444,6 @@ class _AuthPageState extends State<AuthPage> {
     if (!_resetFormKey.currentState!.validate()) return;
     try {
       final supabase = Supabase.instance.client;
-      await supabase.auth.exchangeCodeForSession(_resetCode!);
       final respone = await supabase.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
@@ -634,46 +633,46 @@ class _AuthPageState extends State<AuthPage> {
     ),
   );
 
-}
-
-Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
-  setState(() => _isLoading = true);
-  try {
-    final supabase = Supabase.instance.client;
-    await supabase.auth.resetPasswordForEmail(
-      email,
-      redirectTo: 'https://giltzapp.vercel.app/reset-password', // Tu URL de recuperación
-    );
-    // Muestra mensaje de éxito tipo registro y vuelve al login
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Correo enviado. Revisa tu correo para restablecer la contraseña. También consulta la carpeta de spam.'),
-        duration: Duration(seconds: 5),
-      ),
-    );
-    if (!_isLogin) {
-      setState(() {
-        _isLogin = true; // Cambia a la pantalla de login
-      });
-    }
-  } on AuthException catch (error) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(error.message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
+
+  Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
+    setState(() => _isLoading = true);
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: 'https://giltzapp.vercel.app/reset-password', // Tu URL de recuperación
+      );
+      // Muestra mensaje de éxito tipo registro y vuelve al login
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Correo enviado. Revisa tu correo para restablecer la contraseña. También consulta la carpeta de spam.'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      if (!_isLogin) {
+        setState(() {
+          _isLogin = true; // Cambia a la pantalla de login
+        });
+      }
+    } on AuthException catch (error) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text(error.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
 
 
@@ -846,26 +845,35 @@ Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
   }
 
   @override
-void initState() {
-  // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
-  super.initState();
-  _checkForPasswordReset();
-  //_handleEmailConfirmation();
-}
-
-bool _showResetPassword = false;
-String? _resetCode;
-String? _resetError;
-
-void _checkForPasswordReset() {
-  final uri = Uri.base;
-  if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
-    setState(() {
-      _showResetPassword = true;
-      _resetCode = uri.queryParameters['code'];
-    });
+  void initState() {
+    // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
+    super.initState();
+    _checkForPasswordReset();
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    final event = data.event;
+    if (event == AuthChangeEvent.passwordRecovery) {
+      setState(() {
+        _showResetPassword = true;
+        // Puedes limpiar controladores aquí si quieres
+      });
+    }
+  });
+    //_handleEmailConfirmation();
   }
-}
+
+  bool _showResetPassword = false;
+  String? _resetCode;
+  String? _resetError;
+
+  void _checkForPasswordReset() {
+    final uri = Uri.base;
+    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+      setState(() {
+        _showResetPassword = true;
+        _resetCode = uri.queryParameters['code'];
+      });
+    }
+  }
 
 }
 
