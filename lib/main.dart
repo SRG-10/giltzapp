@@ -725,14 +725,14 @@ Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
     );
   }
 
-  /*@override
+  @override
 void initState() {
   // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
   super.initState();
-  _handleEmailConfirmation();
+  //_handleEmailConfirmation();
 }
 
-Future<void> _handleEmailConfirmation() async {
+/*Future<void> _handleEmailConfirmation() async {
   final uri = Uri.base;
   final code = uri.queryParameters['code'];
   if (code != null) {
