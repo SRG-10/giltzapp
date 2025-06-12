@@ -448,7 +448,7 @@ Widget _buildResetPasswordForm() {
                             },
                           ),
                         ),
-                        obscureText: true,
+                        obscureText: !_resetPasswordVisible,
                         onChanged: (_) => setState(() {}),
                         validator: (value) {
                           if (value == null || value.isEmpty) return 'Ingresa la nueva contraseña';
