@@ -88,6 +88,8 @@ class _AuthPageState extends State<AuthPage> {
 
   bool _isLogin = true;
   bool _isLoading = false;
+  bool _resetPasswordVisible = false;
+
 
   // Controladores login
   final TextEditingController _emailController = TextEditingController();
@@ -431,10 +433,20 @@ Widget _buildResetPasswordForm() {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _newPasswordController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Nueva contraseña',
                           prefixIcon: Icon(Icons.lock),
                           border: OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _resetPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _resetPasswordVisible = !_resetPasswordVisible;
+                              });
+                            },
+                          ),
                         ),
                         obscureText: true,
                         onChanged: (_) => setState(() {}),
