@@ -65,6 +65,8 @@ class MyApp extends StatelessWidget{
 }
 
 
+
+
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
 
@@ -330,7 +332,8 @@ class _AuthPageState extends State<AuthPage> {
   Widget build(BuildContext context) {
     if (_showResetPassword) {
       // Muestra el formulario de reseteo
-      return Scaffold(
+      return _buildResetPasswordForm();
+      /*return Scaffold(
         appBar: AppBar(title: const Text('Restablecer contraseña')),
         body: Center(
           child: Padding(
@@ -355,7 +358,7 @@ class _AuthPageState extends State<AuthPage> {
                 : _buildResetPasswordForm(), // Tu formulario de reseteo
           ),
         ),
-      );
+      );*/
     }
     // Si no es reseteo, muestra login o registro
     return Scaffold(
@@ -933,28 +936,31 @@ Widget _buildPasswordRequirementsReset() {
     );
   }
 
+  bool _isPasswordRecovery = false;
+
   @override
   void initState() {
     // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
     super.initState();
-    _checkForPasswordReset();
+    //_checkForPasswordReset();
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-    final event = data.event;
-    if (event == AuthChangeEvent.passwordRecovery) {
-      setState(() {
-        _showResetPassword = true;
-        // Puedes limpiar controladores aquí si quieres
-      });
-    }
-  });
+      final event = data.event;
+      if (event == AuthChangeEvent.passwordRecovery) {
+        setState(() {
+          _showResetPassword = true;
+          _isPasswordRecovery = true;
+          // Puedes limpiar controladores aquí si quieres
+        });
+      }
+    });
     //_handleEmailConfirmation();
   }
 
   bool _showResetPassword = false;
-  String? _resetCode;
-  String? _resetError;
+  /*String? _resetCode;
+  String? _resetError;*/
 
-  void _checkForPasswordReset() {
+  /*void _checkForPasswordReset() {
     final uri = Uri.base;
     if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
       setState(() {
@@ -962,6 +968,6 @@ Widget _buildPasswordRequirementsReset() {
         _resetCode = uri.queryParameters['code'];
       });
     }
-  }
+  }*/
 
 }
