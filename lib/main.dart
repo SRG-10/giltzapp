@@ -393,8 +393,18 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
-  Widget _buildResetPasswordForm() {
-    return Scaffold(
+Widget _buildResetPasswordForm() {
+  return WillPopScope(
+    onWillPop: () async {
+      setState(() {
+        _showResetPassword = false;
+        _resetError = null;
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+      });
+      return false; // Prevents popping, but resets state
+    },
+    child: Scaffold(
       appBar: AppBar(
         title: const Text('Restablecer contraseña'),
         centerTitle: true,
@@ -505,8 +515,9 @@ class _AuthPageState extends State<AuthPage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
 
 // Añade estas variables en tu estado
