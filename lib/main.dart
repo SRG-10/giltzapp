@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
+// ignore: depend_on_referenced_packages
 import 'package:crypto/crypto.dart';
 import 'home_page.dart'; 
+// Import dart:html as web only for web platform
+// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
+import 'dart:html' as web;
 
 
 void main() async {
@@ -22,8 +27,6 @@ class MyApp extends StatelessWidget{
 
   @override
   Widget build(BuildContext context) {
-    final uri = Uri.base;
-    final isReset = uri.path == '/reset-password' && uri.queryParameters['code'] != null;
 
     return MaterialApp(
       title: 'GiltzApp - Gestor de Contraseñas',
@@ -154,6 +157,7 @@ class _AuthPageState extends State<AuthPage> {
         if (response.user != null) {
           limpiarCampos();
           Navigator.pushReplacement(
+            // ignore: use_build_context_synchronously
             context,
             MaterialPageRoute(builder: (context) => const HomePage()), // Sin parámetro
           );
@@ -161,6 +165,7 @@ class _AuthPageState extends State<AuthPage> {
       } on AuthException catch (error) {
         // Mostrar el error en un AlertDialog
         showDialog(
+          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Error de inicio de sesión'),
@@ -178,6 +183,7 @@ class _AuthPageState extends State<AuthPage> {
         });
       } catch (e) {
         showDialog(
+          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => const AlertDialog(
             title: Text('Error inesperado'),
@@ -216,6 +222,7 @@ class _AuthPageState extends State<AuthPage> {
             _errorMessage = 'El correo electrónico o el nombre de usuario ya están en uso.';
           });
           showDialog(
+            // ignore: use_build_context_synchronously
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Error de registro'),
@@ -281,6 +288,7 @@ class _AuthPageState extends State<AuthPage> {
           _errorMessage = mensaje;
         });
         showDialog(
+          // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Error de registro'),
@@ -344,32 +352,6 @@ class _AuthPageState extends State<AuthPage> {
     if (_showResetPassword) {
       // Muestra el formulario de reseteo
       return _buildResetPasswordForm();
-      /*return Scaffold(
-        appBar: AppBar(title: const Text('Restablecer contraseña')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: _resetError != null
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_resetError!, style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _showResetPassword = false;
-                            _resetError = null;
-                          });
-                        },
-                        child: const Text('Volver al login'),
-                      ),
-                    ],
-                  )
-                : _buildResetPasswordForm(), // Tu formulario de reseteo
-          ),
-        ),
-      );*/
     }
     // Si no es reseteo, muestra login o registro
     return Scaffold(
@@ -399,6 +381,7 @@ class _AuthPageState extends State<AuthPage> {
 Widget _buildResetPasswordForm() {
   return PopScope(
     canPop: false, // Bloquea el pop por defecto
+    // ignore: deprecated_member_use
     onPopInvoked: (didPop) async {
       if (!didPop) {
         _redirectToLogin(); // Cierra sesión y limpia todo
@@ -604,18 +587,16 @@ Widget _buildPasswordRequirementsReset() {
     _isLogin = true;
   });
   
-  /*// 3. Limpia la URL en web (opcional pero recomendado)
+  // 3. Limpia la URL en web (opcional pero recomendado)
   if (kIsWeb) {
     final uri = Uri.parse(web.window.location.href);
     final newUrl = uri.replace(path: '/', query: '').toString();
     web.window.history.replaceState(null, '', newUrl);
-  }*/
+  }
   
   // 4. Redirige al login y elimina el historial de navegación
   Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
 }
-
-
 
 
 
@@ -717,10 +698,10 @@ Widget _buildPasswordRequirementsReset() {
 
 
   void _showForgotPasswordDialog() {
-    final _forgotEmailController = TextEditingController();
-    final _formKey = GlobalKey<FormState>();
-    String? _emailError;
-    bool _loading = false;
+    final forgotEmailController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    String? emailError;
+    bool loading = false;
 
     showDialog(
       context: context,
@@ -733,7 +714,7 @@ Widget _buildPasswordRequirementsReset() {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
                 child: Form(
-                  key: _formKey,
+                  key: formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -743,12 +724,12 @@ Widget _buildPasswordRequirementsReset() {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
-                        controller: _forgotEmailController,
+                        controller: forgotEmailController,
                         decoration: InputDecoration(
                           labelText: 'Correo electrónico',
                           prefixIcon: const Icon(Icons.email),
                           border: const OutlineInputBorder(),
-                          errorText: _emailError,
+                          errorText: emailError,
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
@@ -765,15 +746,15 @@ Widget _buildPasswordRequirementsReset() {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _loading
+                          onPressed: loading
                               ? null
                               : () async {
                                   setState(() {
-                                    _emailError = null;
-                                    _loading = true;
+                                    emailError = null;
+                                    loading = true;
                                   });
-                                  if (_formKey.currentState!.validate()) {
-                                    final email = _forgotEmailController.text.trim();
+                                  if (formKey.currentState!.validate()) {
+                                    final email = forgotEmailController.text.trim();
                                     final supabase = Supabase.instance.client;
                                     final response = await supabase
                                         .from('users')
@@ -783,15 +764,15 @@ Widget _buildPasswordRequirementsReset() {
 
                                     if (response == null) {
                                       setState(() {
-                                        _emailError = 'Correo no registrado';
-                                        _loading = false;
+                                        emailError = 'Correo no registrado';
+                                        loading = false;
                                       });
                                     } else {
                                       await _sendPasswordResetEmailAndShowSuccess(email);
                                       Navigator.pop(context);
                                     }
                                   } else {
-                                    setState(() => _loading = false);
+                                    setState(() => loading = false);
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
@@ -803,7 +784,7 @@ Widget _buildPasswordRequirementsReset() {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          child: _loading
+                          child: loading
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,
@@ -1041,6 +1022,7 @@ Widget _buildPasswordRequirementsReset() {
     );
   }
 
+  // ignore: unused_field
   bool _isPasswordRecovery = false;
 
   @override
@@ -1062,6 +1044,7 @@ Widget _buildPasswordRequirementsReset() {
   }
 
   bool _showResetPassword = false;
+  // ignore: unused_field
   String? _resetCode;
   String? _resetError;
 

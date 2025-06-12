@@ -18,23 +18,24 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
-        _redirectToLogin();
-      } else {
-        _loadUsername();
-      }
-    });
+    _verifySession();
   }
 
-
-  Future<void> _loadUsername() async {
+  Future<void> _verifySession() async {
+    // Optionally, you can await any initialization if needed, or remove this line.
+    if (!mounted) return;
+    
     final user = _supabase.auth.currentUser;
     if (user == null) {
       _redirectToLogin();
-      return;
+    } else {
+      _loadUsername();
     }
+  }
+
+  Future<void> _loadUsername() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
 
     try {
       final response = await _supabase
@@ -55,22 +56,35 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _redirectToLogin() {
-    Navigator.of(context).pushReplacementNamed('/');
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      Future.microtask(() => _redirectToLogin());
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     if (_loading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return Scaffold(
-      appBar: AppBar(title: const Text('Bienvenido')),
-      body: Center(
-        child: Text(
-          '¡Hola, $username!',
-          style: const TextStyle(fontSize: 24),
+    
+    return PopScope(
+      canPop: false, // Bloquea el botón físico/menú de retroceso
+      onPopInvoked: (didPop) {
+        if (!didPop) _redirectToLogin();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Bienvenido')),
+        body: Center(
+          child: Text(
+            '¡Hola, $username!',
+            style: const TextStyle(fontSize: 24),
+          ),
         ),
       ),
     );
