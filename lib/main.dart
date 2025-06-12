@@ -52,7 +52,7 @@ class MyApp extends StatelessWidget{
           final session = Supabase.instance.client.auth.currentSession;
           final isResetFlow = Uri.base.path == '/reset-password';
 
-          // HomePage solo si hay sesión y NO es flujo de reseteo
+          // Solo muestra HomePage si hay sesión Y NO es flujo de reseteo
           if (session != null && !isResetFlow) {
             return const HomePage();
           } else {
@@ -60,6 +60,7 @@ class MyApp extends StatelessWidget{
           }
         },
       ),
+
       onGenerateRoute: (settings) {
         // Maneja rutas no definidas (opcional)
         return MaterialPageRoute(
@@ -396,15 +397,12 @@ class _AuthPageState extends State<AuthPage> {
   }
 
 Widget _buildResetPasswordForm() {
-  return WillPopScope(
-    onWillPop: () async {
-      setState(() {
-        _showResetPassword = false;
-        _resetError = null;
-        _newPasswordController.clear();
-        _confirmPasswordController.clear();
-      });
-      return false; // Prevents popping, but resets state
+  return PopScope(
+    canPop: false, // Bloquea el pop por defecto
+    onPopInvoked: (didPop) async {
+      if (!didPop) {
+        _redirectToLogin(); // Cierra sesión y limpia todo
+      }
     },
     child: Scaffold(
       appBar: AppBar(
@@ -593,17 +591,30 @@ Widget _buildPasswordRequirementsReset() {
 
 
 
-  void _redirectToLogin() {
-    setState(() {
-      _showResetPassword = false;
-      _resetError = null;
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
-      _isLogin = true; // <-- Fuerza el modo login
-    });
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-    
-  }
+  void _redirectToLogin() async {
+  // 1. Cierra la sesión PKCE generada por el enlace de recuperación
+  await Supabase.instance.client.auth.signOut(); 
+  
+  // 2. Limpia el estado del formulario
+  setState(() {
+    _showResetPassword = false;
+    _resetError = null;
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+    _isLogin = true;
+  });
+  
+  /*// 3. Limpia la URL en web (opcional pero recomendado)
+  if (kIsWeb) {
+    final uri = Uri.parse(web.window.location.href);
+    final newUrl = uri.replace(path: '/', query: '').toString();
+    web.window.history.replaceState(null, '', newUrl);
+  }*/
+  
+  // 4. Redirige al login y elimina el historial de navegación
+  Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+}
+
 
 
 
