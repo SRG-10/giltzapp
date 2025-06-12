@@ -957,8 +957,8 @@ Widget _buildPasswordRequirementsReset() {
   }
 
   bool _showResetPassword = false;
-  /*String? _resetCode;
-  String? _resetError;*/
+  String? _resetCode;
+  String? _resetError;
 
   /*void _checkForPasswordReset() {
     final uri = Uri.base;
