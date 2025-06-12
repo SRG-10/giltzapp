@@ -45,18 +45,18 @@ class MyApp extends StatelessWidget{
       home: StreamBuilder<AuthState>(
         stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
-          // Espera a que la sesión se restaure tras refrescar
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
           }
-          if (isReset)
-          {
-            // Si es una solicitud de reseteo de contraseña, muestra el formulario de reseteo
-            return AuthPage(); // Aquí puedes pasar el código si lo necesitas
-          }
+
           final session = Supabase.instance.client.auth.currentSession;
+          final isResetFlow = Uri.base.path == '/reset-password';
+
+          // Prioriza el flujo de reseteo sobre la sesión activa
+          if (isResetFlow) {
+            return const AuthPage();
+          }
+
           return session != null ? const HomePage() : const AuthPage();
         },
       ),
@@ -551,29 +551,34 @@ Widget _buildPasswordRequirementsReset() {
 
   Future<void> _submitResetPassword() async {
     if (!_resetFormKey.currentState!.validate()) return;
+    setState(() => _resetLoading = true);
+
     try {
       final supabase = Supabase.instance.client;
-      final respone = await supabase.auth.updateUser(
+      await supabase.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
-      if (respone.user != null) {
+      
+      // Cierra sesión después de cambiar la contraseña
+      await supabase.auth.signOut();
+      
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contraseña actualizada correctamente.')),
+          const SnackBar(content: Text('Contraseña actualizada. Inicia sesión.')),
         );
-        setState(() {
-          _showResetPassword = false; // Vuelve al login
-          _newPasswordController.clear();
-          _confirmPasswordController.clear();
-        });
+        _redirectToLogin();
       }
-    } on AuthException catch (e) {
-      setState(() => _resetError = e.message);
     } catch (e) {
-      setState(() {
-        _resetError = 'Error inesperado al actualizar la contraseña.';
-      });
+      // Manejo de errores
     } finally {
-      setState(() => _resetLoading = false);
+      if (mounted) setState(() => _resetLoading = false);
+    }
+  }
+
+  void _redirectToLogin() async {
+    await Supabase.instance.client.auth.signOut(); // Cierra la sesión PKCE
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/');
     }
   }
 
@@ -1026,9 +1031,11 @@ Widget _buildPasswordRequirementsReset() {
   void _checkForPasswordReset() {
     final uri = Uri.base;
     if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
-      setState(() {
-        _showResetPassword = true;
-        _resetCode = uri.queryParameters['code'];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _showResetPassword = true;
+          _resetCode = uri.queryParameters['code'];
+        });
       });
     }
   }
