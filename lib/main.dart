@@ -558,20 +558,35 @@ Widget _buildPasswordRequirementsReset() {
       await supabase.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
-      await supabase.auth.signOut();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contraseña actualizada. Redirigiendo...')),
       );
 
+      // Espera un momento para que el usuario vea el mensaje
       await Future.delayed(const Duration(seconds: 2));
-      if (mounted) _redirectToLogin();
+
+      // Oculta el formulario de reseteo y deja que el StreamBuilder muestre HomePage
+      if (mounted) {
+        setState(() {
+          _showResetPassword = false;
+          _resetError = null;
+          _newPasswordController.clear();
+          _confirmPasswordController.clear();
+        });
+      }
+
+      // No navegues manualmente, deja que el StreamBuilder lo haga
+      // Si quieres forzar navegación:
+      // Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+
     } catch (e) {
       setState(() => _resetError = 'Error al actualizar la contraseña');
     } finally {
       if (mounted) setState(() => _resetLoading = false);
     }
   }
+
 
 
 
