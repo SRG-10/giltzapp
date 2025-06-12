@@ -558,25 +558,14 @@ Widget _buildPasswordRequirementsReset() {
       await supabase.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
-      
-      // 1. Cierra la sesión PKCE
       await supabase.auth.signOut();
 
-      // 2. Muestra feedback y redirige
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contraseña actualizada. Redirigiendo...')),
       );
 
-      // 3. Limpia la URL (solo web)
-      /*if (kIsWeb) {
-        final currentUrl = web.window.location.href;
-        final newUrl = currentUrl.replaceAll(RegExp(r'\?code=.*'), '');
-        web.window.history.replaceState(null, '', newUrl);
-      }*/
-
-      // 4. Navega al login
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) _redirectToLogin();
     } catch (e) {
       setState(() => _resetError = 'Error al actualizar la contraseña');
     } finally {
@@ -586,15 +575,18 @@ Widget _buildPasswordRequirementsReset() {
 
 
 
+
   void _redirectToLogin() {
     setState(() {
       _showResetPassword = false;
       _resetError = null;
       _newPasswordController.clear();
       _confirmPasswordController.clear();
+      _isLogin = true; // <-- Fuerza el modo login
     });
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
+
 
 
 
