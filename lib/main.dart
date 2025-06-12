@@ -22,6 +22,9 @@ class MyApp extends StatelessWidget{
 
   @override
   Widget build(BuildContext context) {
+    final uri = Uri.base;
+    final isReset = uri.path == '/reset-password' && uri.queryParameters['code'] != null;
+
     return MaterialApp(
       title: 'GiltzApp - Gestor de Contraseñas',
       theme: ThemeData(
@@ -47,6 +50,11 @@ class MyApp extends StatelessWidget{
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
+          }
+          if (isReset)
+          {
+            // Si es una solicitud de reseteo de contraseña, muestra el formulario de reseteo
+            return AuthPage(); // Aquí puedes pasar el código si lo necesitas
           }
           final session = Supabase.instance.client.auth.currentSession;
           return session != null ? const HomePage() : const AuthPage();
@@ -942,7 +950,7 @@ Widget _buildPasswordRequirementsReset() {
   void initState() {
     // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
     super.initState();
-    //_checkForPasswordReset();
+    _checkForPasswordReset();
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       if (event == AuthChangeEvent.passwordRecovery) {
@@ -960,7 +968,7 @@ Widget _buildPasswordRequirementsReset() {
   String? _resetCode;
   String? _resetError;
 
-  /*void _checkForPasswordReset() {
+  void _checkForPasswordReset() {
     final uri = Uri.base;
     if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
       setState(() {
@@ -968,6 +976,6 @@ Widget _buildPasswordRequirementsReset() {
         _resetCode = uri.queryParameters['code'];
       });
     }
-  }*/
+  }
 
 }
