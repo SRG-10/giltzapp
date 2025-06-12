@@ -52,12 +52,12 @@ class MyApp extends StatelessWidget{
           final session = Supabase.instance.client.auth.currentSession;
           final isResetFlow = Uri.base.path == '/reset-password';
 
-          // Prioriza el flujo de reseteo sobre la sesión activa
-          if (isResetFlow) {
+          // Solo muestra HomePage si hay sesión Y NO es flujo de reseteo
+          if (session != null && !isResetFlow) {
+            return const HomePage();
+          } else {
             return const AuthPage();
           }
-
-          return session != null ? const HomePage() : const AuthPage();
         },
       ),
       onGenerateRoute: (settings) {
@@ -559,20 +559,24 @@ Widget _buildPasswordRequirementsReset() {
         UserAttributes(password: _newPasswordController.text),
       );
       
-      // Muestra el mensaje antes de redirigir
+      // 1. Cierra la sesión PKCE
+      await supabase.auth.signOut();
+
+      // 2. Muestra feedback y redirige
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contraseña actualizada. Redirigiendo...')),
       );
 
-      // Espera 2 segundos para que el usuario vea el mensaje
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Redirige al login y limpia el historial de navegación
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/',
-        (Route<dynamic> route) => false,
-      );
-      
+      // 3. Limpia la URL (solo web)
+      /*if (kIsWeb) {
+        final currentUrl = web.window.location.href;
+        final newUrl = currentUrl.replaceAll(RegExp(r'\?code=.*'), '');
+        web.window.history.replaceState(null, '', newUrl);
+      }*/
+
+      // 4. Navega al login
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+
     } catch (e) {
       setState(() => _resetError = 'Error al actualizar la contraseña');
     } finally {
@@ -581,13 +585,17 @@ Widget _buildPasswordRequirementsReset() {
   }
 
 
+
   void _redirectToLogin() {
     setState(() {
-      _showResetPassword = false; // <-- Añade esto
+      _showResetPassword = false;
       _resetError = null;
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
     });
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
+
 
 
   final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
