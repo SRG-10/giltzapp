@@ -6,6 +6,8 @@ class HomePage extends StatefulWidget {
 
   @override
   State<HomePage> createState() => _HomePageState();
+
+ 
 }
 
 class _HomePageState extends State<HomePage> {
@@ -16,8 +18,16 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadUsername();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        _redirectToLogin();
+      } else {
+        _loadUsername();
+      }
+    });
   }
+
 
   Future<void> _loadUsername() async {
     final user = _supabase.auth.currentUser;

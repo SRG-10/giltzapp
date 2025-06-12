@@ -52,7 +52,7 @@ class MyApp extends StatelessWidget{
           final session = Supabase.instance.client.auth.currentSession;
           final isResetFlow = Uri.base.path == '/reset-password';
 
-          // Solo muestra HomePage si hay sesión Y NO es flujo de reseteo
+          // HomePage solo si hay sesión y NO es flujo de reseteo
           if (session != null && !isResetFlow) {
             return const HomePage();
           } else {
@@ -570,34 +570,24 @@ Widget _buildPasswordRequirementsReset() {
       await supabase.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
+      
+      // Cierra la sesión PKCE generada automáticamente
+      await supabase.auth.signOut();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contraseña actualizada. Redirigiendo...')),
+        const SnackBar(content: Text('Contraseña actualizada. Inicia sesión.')),
       );
-
-      // Espera un momento para que el usuario vea el mensaje
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Oculta el formulario de reseteo y deja que el StreamBuilder muestre HomePage
-      if (mounted) {
-        setState(() {
-          _showResetPassword = false;
-          _resetError = null;
-          _newPasswordController.clear();
-          _confirmPasswordController.clear();
-        });
-      }
-
-      // No navegues manualmente, deja que el StreamBuilder lo haga
-      // Si quieres forzar navegación:
-      // Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-
+      
+      // Redirige al login
+      _redirectToLogin();
+      
     } catch (e) {
       setState(() => _resetError = 'Error al actualizar la contraseña');
     } finally {
       if (mounted) setState(() => _resetLoading = false);
     }
   }
+
 
 
 
@@ -612,6 +602,7 @@ Widget _buildPasswordRequirementsReset() {
       _isLogin = true; // <-- Fuerza el modo login
     });
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    
   }
 
 
