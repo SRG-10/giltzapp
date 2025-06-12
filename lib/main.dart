@@ -394,76 +394,120 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Widget _buildResetPasswordForm() {
-  return Form(
-    key: _resetFormKey,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: _newPasswordController,
-          decoration: const InputDecoration(
-            labelText: 'Nueva contraseña',
-            prefixIcon: Icon(Icons.lock),
-            border: OutlineInputBorder(),
-          ),
-          obscureText: true,
-          onChanged: (_) => setState(() {}),
-          validator: (value) {
-            if (value == null || value.isEmpty) return 'Ingresa la nueva contraseña';
-            if (!_minLengthReset) return 'Mínimo 12 caracteres';
-            if (!_hasUpperReset) return 'Al menos una mayúscula';
-            if (!_hasLowerReset) return 'Al menos una minúscula';
-            if (!_hasDigitReset) return 'Al menos un número';
-            if (!_hasSpecialReset) return 'Al menos un carácter especial';
-            return null;
-          },
-        ),
-        if (_newPasswordController.text.isNotEmpty) _buildPasswordRequirementsReset(),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _confirmPasswordController,
-          decoration: const InputDecoration(
-            labelText: 'Confirmar contraseña',
-            prefixIcon: Icon(Icons.lock_outline),
-            border: OutlineInputBorder(),
-          ),
-          obscureText: true,
-          validator: (value) {
-            if (value == null || value.isEmpty) return 'Confirma la contraseña';
-            if (value != _newPasswordController.text) return 'Las contraseñas no coinciden';
-            return null;
-          },
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _resetLoading ? null : _submitResetPassword,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Restablecer contraseña'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Card(
+              elevation: 8,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Form(
+                  key: _resetFormKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Introduce tu nueva contraseña',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _newPasswordController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nueva contraseña',
+                          prefixIcon: Icon(Icons.lock),
+                          border: OutlineInputBorder(),
+                        ),
+                        obscureText: true,
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Ingresa la nueva contraseña';
+                          if (!_minLengthReset) return 'Mínimo 12 caracteres';
+                          if (!_hasUpperReset) return 'Al menos una mayúscula';
+                          if (!_hasLowerReset) return 'Al menos una minúscula';
+                          if (!_hasDigitReset) return 'Al menos un número';
+                          if (!_hasSpecialReset) return 'Al menos un carácter especial';
+                          return null;
+                        },
+                      ),
+                      if (_newPasswordController.text.isNotEmpty) _buildPasswordRequirementsReset(),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirmar contraseña',
+                          prefixIcon: Icon(Icons.lock_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                        obscureText: true,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Confirma la contraseña';
+                          if (value != _newPasswordController.text) return 'Las contraseñas no coinciden';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _resetLoading ? null : _submitResetPassword,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: _resetLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Actualizar contraseña'),
+                        ),
+                      ),
+                      if (_resetError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Text(
+                            _resetError!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _showResetPassword = false;
+                            _resetError = null;
+                          });
+                        },
+                        child: const Text('Volver al login'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            child: _resetLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Actualizar contraseña'),
           ),
-        )
-      ],
-    ),
-  );
-}
+        ),
+      ),
+    );
+  }
+
 
 // Añade estas variables en tu estado
 bool get _minLengthReset => _newPasswordController.text.length >= 12;
