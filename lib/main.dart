@@ -559,28 +559,36 @@ Widget _buildPasswordRequirementsReset() {
         UserAttributes(password: _newPasswordController.text),
       );
       
-      // Cierra sesión después de cambiar la contraseña
-      await supabase.auth.signOut();
+      // Muestra el mensaje antes de redirigir
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña actualizada. Redirigiendo...')),
+      );
+
+      // Espera 2 segundos para que el usuario vea el mensaje
+      await Future.delayed(const Duration(seconds: 2));
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contraseña actualizada. Inicia sesión.')),
-        );
-        _redirectToLogin();
-      }
+      // Redirige al login y limpia el historial de navegación
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/',
+        (Route<dynamic> route) => false,
+      );
+      
     } catch (e) {
-      // Manejo de errores
+      setState(() => _resetError = 'Error al actualizar la contraseña');
     } finally {
       if (mounted) setState(() => _resetLoading = false);
     }
   }
 
-  void _redirectToLogin() async {
-    await Supabase.instance.client.auth.signOut(); // Cierra la sesión PKCE
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/');
-    }
+
+  void _redirectToLogin() {
+    setState(() {
+      _showResetPassword = false; // <-- Añade esto
+      _resetError = null;
+    });
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
+
 
   final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
   // Expresión regular para validar correos electrónicos
