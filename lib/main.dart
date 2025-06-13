@@ -8,6 +8,8 @@ import 'home_page.dart';
 // Import dart:html as web only for web platform
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as web;
+import 'package:encrypt/encrypt.dart' as encrypt;
+import 'encryption_service.dart';
 
 
 void main() async {
@@ -84,11 +86,15 @@ class AuthPage extends StatefulWidget {
 
   @override
   State<AuthPage> createState() => _AuthPageState();
+
+  
 }
 
 class _AuthPageState extends State<AuthPage> {
   final _formKeyLogin = GlobalKey<FormState>();
   final _formKeyRegister = GlobalKey<FormState>();
+
+  encrypt.Key? _currentMasterKey;
 
   bool _isLogin = true;
   bool _isLoading = false;
@@ -247,12 +253,15 @@ class _AuthPageState extends State<AuthPage> {
           },
         );
         if (response.user != null) {
-          final hash = sha256.convert(utf8.encode(_regPasswordController.text)).toString();
+          final salt = EncryptionService.generateSecureSalt();
+          final masterKey = await EncryptionService.deriveMasterKey(_regPasswordController.text, salt);
+          //final hash = sha256.convert(utf8.encode(_regPasswordController.text)).toString();
           await supabase.from('users').insert({
             'auth_id': response.user!.id,
             'nombre_usuario': _usernameController.text,
             'correo_electronico': _regEmailController.text,
-            'hash_contrasena_maestra': hash,
+            'hash_contrasena_maestra': base64Encode(masterKey.bytes),
+            'salt': base64Encode(salt),
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta. También consulta la carpeta de spam.')),
@@ -332,6 +341,8 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   void dispose() { // Limpia los controladores al eliminar el widget
+    _currentMasterKey?.bytes.fillRange(0, _currentMasterKey!.bytes.length, 0); // Limpia el contenido del master key
+    _currentMasterKey = null;
     _loginPasswordVisible = false;
     _emailController.dispose();
     _passwordController.dispose();
@@ -542,37 +553,103 @@ Widget _buildPasswordRequirementsReset() {
 
 
 
-  Future<void> _submitResetPassword() async {
-    if (!_resetFormKey.currentState!.validate()) return;
-    setState(() => _resetLoading = true);
 
-    try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.updateUser(
-        UserAttributes(password: _newPasswordController.text),
-      );
-      
-      // Cierra la sesión PKCE generada automáticamente
-      await supabase.auth.signOut();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contraseña actualizada. Inicia sesión.')),
-      );
-      
-      // Redirige al login
-      _redirectToLogin();
-      
-    } catch (e) {
-      setState(() => _resetError = 'Error al actualizar la contraseña');
-    } finally {
-      if (mounted) setState(() => _resetLoading = false);
+Future<void> _submitResetPassword() async {
+  try {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser!;
+    
+    // 1. Obtener clave actual antes del cambio
+    final userData = await supabase
+        .from('users')
+        .select('salt, hash_contrasena_maestra')
+        .eq('auth_id', user.id)
+        .single();
+
+    if (userData['salt'] == null) {
+      throw Exception('Usuario no tiene salt registrado');
     }
+
+    // Verificar formato base64
+      try {
+        base64Decode(userData['salt'] as String);
+      } catch (e) {
+        throw Exception('Formato de salt inválido');
+      }
+
+    final currentSalt = Uint8List.fromList(userData['salt'] as List<int>);
+    _currentMasterKey = await EncryptionService.deriveMasterKey(
+      _passwordController.text, // Contraseña actual
+      currentSalt,
+    );
+
+    // 2. Generar nuevos componentes de seguridad
+    final newSalt = EncryptionService.generateSecureSalt();
+    final newMasterKey = await EncryptionService.deriveMasterKey(
+      _newPasswordController.text,
+      newSalt,
+    );
+
+    // 3. Actualizar en transacción
+    await supabase.rpc('update_user_credentials', params: {
+      'user_id': user.id,
+      'new_password': _newPasswordController.text,
+      'new_hash': base64Encode(newMasterKey.bytes),
+      'new_salt': base64Encode(newSalt),
+    });
+
+    // 4. Migrar contraseñas con ambas claves
+    await _migratePasswords(
+      userId: user.id,
+      oldKey: _currentMasterKey!,
+      newKey: newMasterKey,
+    );
+
+    // 5. Limpiar clave anterior
+    _currentMasterKey = null;
+
+  } on PostgrestException catch (e) {
+    setState(() => _resetError = 'Error de base de datos: ${e.message}');
+  } catch (e) {
+    setState(() => _resetError = 'Error inesperado: ${e.toString()}');
+  } finally {
+    setState(() => _resetLoading = false);
   }
+}
 
+Future<void> _migratePasswords({required String userId, required encrypt.Key oldKey, required encrypt.Key newKey,}) async {
 
+  final supabase = Supabase.instance.client;
+  
+  final passwords = await supabase
+      .from('passwords')
+      .select()
+      .eq('user_id', userId);
 
+  for (final pwd in passwords) {
 
+    if (pwd['hash_contrasena'] == null || pwd['iv'] == null || pwd['auth_tag'] == null) continue;
 
+    // Descifrar con clave antigua
+    final decrypted = await EncryptionService.decryptPassword(
+      hashContrasena: pwd['hash_contrasena'] as String,
+      ivBytes: pwd['iv'] as String,
+      authTag: pwd['auth_tag'] as String,
+      key: oldKey,
+    );
+    
+    // Cifrar con nueva clave
+    final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
+    
+    // Actualizar con todos los campos requeridos
+    await supabase.from('passwords').update({
+      'hash_contrasena': encrypted['hash_contrasena'],
+      'iv': encrypted['iv'],
+      'auth_tag': encrypted['auth_tag'],
+    }).eq('id', pwd['id']);
+  }
+} 
 
   void _redirectToLogin() async {
   // 1. Cierra la sesión PKCE generada por el enlace de recuperación
