@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 // ignore: depend_on_referenced_packages
-import 'package:crypto/crypto.dart';
+//import 'package:crypto/crypto.dart';
 import 'home_page.dart'; 
 // Import dart:html as web only for web platform
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
@@ -160,13 +160,28 @@ class _AuthPageState extends State<AuthPage> {
           email: _emailController.text,
           password: _passwordController.text,
         );
+
+        final userData = await supabase
+            .from('users')
+            .select('salt')
+            .eq('auth_id', response.user!.id)
+            .single();
+
+        final salt = base64Decode(userData['salt'] as String);
+        final masterKey = await EncryptionService.deriveMasterKey(_passwordController.text, salt);
+
+        await EncryptionService.initialize(masterKey);
         if (response.user != null) {
           limpiarCampos();
-          Navigator.pushReplacement(
+          if (mounted)
+          {
+            Navigator.pushReplacement(
             // ignore: use_build_context_synchronously
             context,
-            MaterialPageRoute(builder: (context) => const HomePage()), // Sin parámetro
+            MaterialPageRoute(builder: (_) => const HomePage()), // Sin parámetro
           );
+          }
+          
         }
       } on AuthException catch (error) {
         // Mostrar el error en un AlertDialog
@@ -188,7 +203,9 @@ class _AuthPageState extends State<AuthPage> {
           _errorMessage = error.message;
         });
       } catch (e) {
-        showDialog(
+        if (mounted)
+        {
+          showDialog(
           // ignore: use_build_context_synchronously
           context: context,
           builder: (context) => const AlertDialog(
@@ -199,6 +216,8 @@ class _AuthPageState extends State<AuthPage> {
         setState(() {
           _errorMessage = 'Error inesperado durante el login';
         });
+        }
+       
       } finally {
         setState(() {
           _isLoading = false;

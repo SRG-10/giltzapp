@@ -1,4 +1,5 @@
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,11 +8,38 @@ import 'dart:math';
 
 class EncryptionService {
 
+  static final _secureStorage = FlutterSecureStorage();
+  static encrypt.Key? _currentMasterKey;
+
+  static Future<void> initialize(encrypt.Key key) async {
+    _currentMasterKey = key;
+    final keyBase64 = base64Encode(key.bytes);
+    await _secureStorage.write(
+      key: 'master_key',
+      value: keyBase64,
+    );
+  }
+
+  static Future<encrypt.Key?> get currentMasterKey async {
+    if (_currentMasterKey != null) return _currentMasterKey;
+    
+    final keyString = await _secureStorage.read(key: 'master_key');
+    if (keyString != null) {
+      return encrypt.Key(base64Decode(keyString));
+    }
+    return null;
+  }
+
+  static Future<void> clear() async {
+    _currentMasterKey = null;
+    await _secureStorage.delete(key: 'master_key');
+  }
+
   static Future<encrypt.Key> deriveMasterKey(String password, Uint8List salt) async {
     final pbkdf2 = Pbkdf2(
-      bits: 256,
       iterations: 310000,
       macAlgorithm: Hmac.sha256(),
+      bits: 256,
     );
 
     final secretKey = await pbkdf2.deriveKey(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:giltzapp_1/encryption_service.dart';
+import 'package:flutter/services.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,15 +23,213 @@ class _HomePageState extends State<HomePage> {
     _verifySession();
   }
 
+  Future<void> _addCategory() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    final userResponse = await _supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single();
+    final userId = userResponse['id'] as int;
+
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nueva categoría'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Nombre de la categoría'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await _supabase.from('categories').insert({
+        'usuario_id': userId,
+        'nombre': result,
+      });
+      await _loadCategories();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Categoría añadida')),
+      );
+    }
+  }
+
+  // MÉTODO PARA AGREGAR CONTRASEÑA
+  Future<void> _addPassword() async {
+
+    final masterKey = await EncryptionService.currentMasterKey;
+
+      if (masterKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Sesión no válida')),
+          );
+        }
+        return;
+      }
+
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      // 1. Obtener clave maestra actual
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Sesión no válida')),
+        );
+        return;
+      }
+
+      // 2. Obtener datos del formulario
+      final TextEditingController siteController = TextEditingController();
+      final TextEditingController userController = TextEditingController();
+      final TextEditingController passController = TextEditingController();
+      final TextEditingController notesController = TextEditingController();
+
+      final userResponse = await _supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single();
+
+      final userId = userResponse['id'] as int;
+
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nueva contraseña'),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: siteController,
+                  decoration: const InputDecoration(labelText: 'Sitio'),
+                ),
+                TextField(
+                  controller: userController,
+                  decoration: const InputDecoration(labelText: 'Usuario'),
+                ),
+                TextField(
+                  controller: passController,
+                  decoration: const InputDecoration(labelText: 'Contraseña'),
+                  obscureText: true,
+                ),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(labelText: 'Notas'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final sitio = siteController.text.trim();
+                final nombreUsuario = userController.text.trim();
+                final password = passController.text.trim();
+                final notas = notesController.text.trim();
+
+                if (sitio.isEmpty || password.isEmpty) return;
+
+                // Obtener ID numérico del usuario
+                final userResponse = await _supabase
+                    .from('users')
+                    .select('id')
+                    .eq('auth_id', user.id)
+                    .single();
+                final userId = userResponse['id'] as int;
+
+                // 3. Cifrar la contraseña
+                final encrypted = await EncryptionService.encryptPassword(password, masterKey);
+
+                // 4. Crear/actualizar sitio web
+                final webSiteResponse = await _supabase
+                    .from('web_sites')
+                    .upsert({
+                      'usuario_id': userId,
+                      'nombre_sitio': sitio,
+                    }, 
+                    onConflict: 'nombre_sitio,usuario_id')
+                    .select('id')
+                    .single();
+                
+                final sitioWebId = webSiteResponse['id'] as int;
+
+                // 5. Insertar contraseña cifrada
+                await _supabase.from('passwords').insert({
+                  'sitio_web_id': sitioWebId,
+                  'nombre_usuario': nombreUsuario,
+                  'hash_contrasena': encrypted['hash_contrasena'],
+                  'iv': encrypted['iv'],
+                  'auth_tag': encrypted['auth_tag'],
+                  'notas': notas,
+                  'user_id': userId,
+                });
+
+                if (encrypted['hash_contrasena'] == null || 
+                    encrypted['iv'] == null || 
+                    encrypted['auth_tag'] == null) {
+                  throw Exception('Error: Datos cifrados incompletos');
+                }
+
+                await _loadPasswords();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Contraseña añadida')),
+                );
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+
+
   Future<void> _verifySession() async {
     if (!mounted) return;
+    
     final user = _supabase.auth.currentUser;
     if (user == null) {
       _redirectToLogin();
     } else {
+      // Recuperar clave desde almacenamiento seguro
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) {
+        _redirectToLogin();
+        return;
+      }
+      
       await Future.wait([_loadUsername(), _loadPasswords(), _loadCategories()]);
     }
   }
+
+
 
   Future<void> _loadUsername() async {
     final user = _supabase.auth.currentUser;
@@ -40,15 +240,21 @@ class _HomePageState extends State<HomePage> {
           .select('nombre_usuario, id')
           .eq('auth_id', user.id)
           .maybeSingle();
+
       if (mounted) {
         setState(() {
           username = response?['nombre_usuario'] ?? user.email;
+          _loading = false; // Añade esto para forzar actualización
         });
       }
     } catch (e) {
-      if (mounted) _redirectToLogin();
+      if (mounted) {
+        setState(() => _loading = false);
+        _redirectToLogin();
+      }
     }
   }
+
 
   Future<void> _loadCategories() async {
     final user = _supabase.auth.currentUser;
@@ -77,9 +283,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  
+
   Future<void> _loadPasswords() async {
     final user = _supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     try {
       final userResponse = await _supabase
           .from('users')
@@ -89,9 +300,18 @@ class _HomePageState extends State<HomePage> {
       final userId = userResponse['id'] as int;
 
       final response = await _supabase
-          .from('passwords')
-          .select('id, sitio_web_id, nombre_usuario, notas')
-          .eq('user_id', userId);
+        .from('passwords')
+        .select('''
+            id, 
+            sitio_web_id, 
+            nombre_usuario, 
+            notas,
+            hash_contrasena,
+            iv,
+            auth_tag
+        ''')
+        .eq('user_id', userId);
+
 
       if (mounted) {
         setState(() {
@@ -101,12 +321,14 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _loading = false); // <- Añade esto
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error cargando contraseñas: ${e.toString()}')),
         );
       }
     }
   }
+
 
   void _redirectToLogin() {
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
@@ -115,6 +337,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _signOut() async {
     try {
       await _supabase.auth.signOut();
+      await EncryptionService.clear();
       _redirectToLogin();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -123,26 +346,49 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _addCategory() {
-    // Aquí puedes abrir un diálogo o navegar a una pantalla para agregar categoría
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Función para agregar categoría (por implementar)')),
-    );
+  
+
+  
+
+  void _copyToClipboard(BuildContext context, Map<String, dynamic> password) async {
+    try {
+      // Verificar campos requeridos
+      if (password['hash_contrasena'] == null || 
+          password['iv'] == null || 
+          password['auth_tag'] == null) {
+        throw Exception('Datos cifrados incompletos');
+      }
+
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Sesión no válida')),
+        );
+        return;
+      }
+
+      final decrypted = await EncryptionService.decryptPassword(
+        hashContrasena: password['hash_contrasena']!, // Forzar non-null
+        ivBytes: password['iv']!,
+        authTag: password['auth_tag']!,
+        key: masterKey,
+      );
+
+      await Clipboard.setData(ClipboardData(text: decrypted));
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña copiada al portapapeles')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al copiar: ${e.toString()}')),
+      );
+    }
   }
 
-  void _addPassword() {
-    // Aquí puedes abrir un diálogo o navegar a una pantalla para agregar contraseña
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Función para agregar contraseña (por implementar)')),
-    );
-  }
-
-  void _copyToClipboard(Map<String, dynamic> password) {
-    // Implementar lógica de descifrado aquí
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Función en desarrollo')),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,24 +481,40 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: _passwords.isEmpty
                   ? const Center(child: Text('No hay contraseñas guardadas'))
-                  : ListView.builder(
-                      itemCount: _passwords.length,
-                      itemBuilder: (context, index) {
-                        final password = _passwords[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          child: ListTile(
-                            leading: const Icon(Icons.lock),
-                            title: Text(password['notas'] ?? 'Sin nombre'),
-                            subtitle: Text(password['nombre_usuario'] ?? ''),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.copy),
-                              onPressed: () => _copyToClipboard(password),
-                            ),
+                  :ListView.builder(
+                    itemCount: _passwords.length,
+                    itemBuilder: (context, index) {
+                      final password = _passwords[index];
+                      
+                      // Verificar integridad antes de mostrar
+                      final bool isCorrupt = password['hash_contrasena'] == null || 
+                                            password['iv'] == null || 
+                                            password['auth_tag'] == null;
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: ListTile(
+                          leading: const Icon(Icons.lock),
+                          title: Text(password['notas'] ?? 'Sin nombre'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Usuario: ${password['nombre_usuario'] ?? ''}'),
+                              if (isCorrupt) 
+                                const Text('⚠️ Contraseña corrupta', 
+                                  style: TextStyle(color: Colors.red)),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.copy),
+                            onPressed: isCorrupt 
+                                ? null 
+                                : () => _copyToClipboard(context, password),
+                          ),
+                        ),
+                      );
+                    },
+                  )
             ),
           ],
         ),
@@ -265,3 +527,4 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
