@@ -6,19 +6,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cryptography/cryptography.dart';
 import 'dart:math';
 
+
 class EncryptionService {
 
   static final _secureStorage = FlutterSecureStorage();
   static encrypt.Key? _currentMasterKey;
 
   static Future<void> initialize(encrypt.Key key) async {
+  try {
     _currentMasterKey = key;
     final keyBase64 = base64Encode(key.bytes);
     await _secureStorage.write(
       key: 'master_key',
       value: keyBase64,
+      webOptions: const WebOptions(
+        // public: false, // Removed invalid parameter
+      ), // Especifica para web
     );
+  } catch (e) {
+    print('Error guardando clave: $e');
   }
+}
+
 
   static Future<encrypt.Key?> get currentMasterKey async {
     if (_currentMasterKey != null) return _currentMasterKey;

@@ -217,17 +217,22 @@ class _HomePageState extends State<HomePage> {
     final user = _supabase.auth.currentUser;
     if (user == null) {
       _redirectToLogin();
-    } else {
-      // Recuperar clave desde almacenamiento seguro
+      return;
+    }
+
+    try {
       final masterKey = await EncryptionService.currentMasterKey;
-      if (masterKey == null) {
+      if (masterKey == null || !mounted) {
         _redirectToLogin();
         return;
       }
       
       await Future.wait([_loadUsername(), _loadPasswords(), _loadCategories()]);
+    } catch (e) {
+      if (mounted) _redirectToLogin();
     }
   }
+
 
 
 

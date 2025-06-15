@@ -17,7 +17,7 @@ void main() async {
   await Supabase.initialize(
     url: 'https://abioxiwzcrsemxllqznq.supabase.co',        
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiaW94aXd6Y3JzZW14bGxxem5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNDAzOTgsImV4cCI6MjA2NDgxNjM5OH0.1xFPpUgEOJZPHnpbYm4GyQvjzCqptIcOO1dGEausiz8',
-    authOptions: const FlutterAuthClientOptions(
+    authOptions: FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce, // Usa PKCE para mayor seguridad
     )
   );
@@ -171,20 +171,18 @@ class _AuthPageState extends State<AuthPage> {
         final masterKey = await EncryptionService.deriveMasterKey(_passwordController.text, salt);
 
         await EncryptionService.initialize(masterKey);
-        if (response.user != null) {
-          limpiarCampos();
-          if (mounted)
-          {
-            Navigator.pushReplacement(
-            // ignore: use_build_context_synchronously
-            context,
-            MaterialPageRoute(builder: (_) => const HomePage()), // Sin parámetro
-          );
-          }
-          
+
+        if(!mounted) return; // Verifica si el widget sigue montado
+
+        if (mounted)
+        {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
         }
+        
+
       } on AuthException catch (error) {
         // Mostrar el error en un AlertDialog
+        if (mounted) { setState(() => _isLoading = false); }
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
