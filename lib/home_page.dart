@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:giltzapp_1/encryption_service.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
+import 'package:share_plus/share_plus.dart';
+// ignore: deprecated_member_use
+import 'dart:html' as html; // Solo para web
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:progress_bar_countdown/progress_bar_countdown.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,6 +17,49 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+
+  // Variables de estado
+  bool _clipboardActive = false;
+  final int _clipboardSeconds = 10;
+  Timer? _clipboardTimer;
+  int _remainingSeconds = 0;
+  double get _progress => _remainingSeconds / _clipboardSeconds;
+
+  // Métodos de control
+  void _startClipboardCountdown() {
+    _clipboardActive = true;
+    _remainingSeconds = _clipboardSeconds;
+    _clipboardTimer?.cancel();
+    _clipboardTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingSeconds > 0 && mounted) {
+        setState(() => _remainingSeconds--);
+      } else {
+        _clearClipboard();
+        timer.cancel();
+      }
+    });
+  }
+
+  void _clearClipboard() async {
+    _clipboardTimer?.cancel();
+    await Clipboard.setData(const ClipboardData(text: ''));
+    if (mounted) {
+      setState(() {
+        _clipboardActive = false;
+        _remainingSeconds = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _clipboardTimer?.cancel();
+    super.dispose();
+  }
+
+
+
+
   final _supabase = Supabase.instance.client;
   String? username;
   bool _loading = true;
@@ -351,48 +400,85 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  
-
-  
-
   void _copyToClipboard(BuildContext context, Map<String, dynamic> password) async {
-    try {
-      // Verificar campos requeridos
-      if (password['hash_contrasena'] == null || 
-          password['iv'] == null || 
-          password['auth_tag'] == null) {
-        throw Exception('Datos cifrados incompletos');
-      }
+  try {
+    if (password['hash_contrasena'] == null || 
+        password['iv'] == null || 
+        password['auth_tag'] == null) {
+      throw Exception('Datos cifrados incompletos');
+    }
 
-      final masterKey = await EncryptionService.currentMasterKey;
-      if (masterKey == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Sesión no válida')),
-        );
-        return;
-      }
+    final masterKey = await EncryptionService.currentMasterKey;
+    if (masterKey == null || !mounted) return;
 
-      final decrypted = await EncryptionService.decryptPassword(
-        hashContrasena: password['hash_contrasena']!, // Forzar non-null
-        ivBytes: password['iv']!,
-        authTag: password['auth_tag']!,
-        key: masterKey,
-      );
+    final decrypted = await EncryptionService.decryptPassword(
+      hashContrasena: password['hash_contrasena']!,
+      ivBytes: password['iv']!,
+      authTag: password['auth_tag']!,
+      key: masterKey,
+    );
 
-      await Clipboard.setData(ClipboardData(text: decrypted));
+    if (decrypted.isEmpty) throw Exception('Texto a copiar vacío');
+
+    if (kIsWeb) {
+      final isMobileWeb = RegExp(r'iPhone|iPad|Android', caseSensitive: false)
+          .hasMatch(html.window.navigator.userAgent);
       
-      if (!mounted) return;
+      if (isMobileWeb) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Contraseña descifrada'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText(decrypted),
+                const SizedBox(height: 20),
+                LinearProgressIndicator(
+                  value: _progress,
+                  backgroundColor: Colors.grey[300],
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+                Text('Tiempo restante: $_remainingSeconds segundos'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+        _startClipboardCountdown();
+      } else {
+        await Clipboard.setData(ClipboardData(text: decrypted));
+        _startClipboardCountdown();
+      }
+    } else {
+      await Clipboard.setData(ClipboardData(text: decrypted));
+      _startClipboardCountdown();
+    }
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contraseña copiada al portapapeles')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al copiar: ${e.toString()}')),
+        SnackBar(
+          content: Text('Contraseña copiada (válida por $_clipboardSeconds segundos)'),
+          duration: Duration(seconds: _clipboardSeconds),
+        ),
       );
     }
+
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al copiar: ${e.toString()}')),
+    );
   }
+}
+
+// Widget de la barra de progreso en el build
+
 
 
   @override
@@ -483,6 +569,25 @@ class _HomePageState extends State<HomePage> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ),
+            if (_clipboardActive)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Column(
+                  children: [
+                    LinearProgressIndicator(
+                      value: _progress,
+                      minHeight: 8,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tiempo restante: $_remainingSeconds segundos',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: _passwords.isEmpty
                   ? const Center(child: Text('No hay contraseñas guardadas'))
@@ -512,15 +617,21 @@ class _HomePageState extends State<HomePage> {
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.copy),
-                            onPressed: isCorrupt 
-                                ? null 
-                                : () => _copyToClipboard(context, password),
+                            onPressed: () {
+                              Timer.run(() => _copyToClipboard(context, password)); // Ejecutar inmediatamente tras el gesto
+                            },
                           ),
                         ),
                       );
                     },
                   )
             ),
+            LinearProgressIndicator(
+              value: _progress,
+              minHeight: 3,
+              backgroundColor: Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            )
           ],
         ),
         floatingActionButton: FloatingActionButton(
