@@ -427,37 +427,73 @@ class _HomePageState extends State<HomePage> {
       final isMobile = isMobileWeb();
       
       if (isMobileWeb()) {
+        String? visiblePassword;
+        Timer? hideTimer;
+
         showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Mostrar contraseña'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Por seguridad, la contraseña no se mostrará directamente.'),
-                ElevatedButton(
-                  child: const Text('Mostrar durante 5 segundos'),
-                  onPressed: () async {
-                    // Mostrar contraseña temporalmente aquí
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, setState) => AlertDialog(
+              title: const Text('Mostrar contraseña'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (visiblePassword == null)
+                    const Text('Por seguridad, la contraseña no se mostrará directamente.'),
+                  if (visiblePassword != null) ...[
+                    SelectableText(
+                      visiblePassword!,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: null, // Indeterminado durante los 5 segundos
+                      minHeight: 6,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('Visible por 5 segundos'),
+                  ],
+                  if (visiblePassword == null) ...[
+                    ElevatedButton(
+                      child: const Text('Mostrar durante 5 segundos'),
+                      onPressed: () async {
+                        setState(() => visiblePassword = decrypted); // decrypted es la contraseña descifrada
+                        hideTimer = Timer(const Duration(seconds: 5), () {
+                          if (ctx.mounted) {
+                            setState(() => visiblePassword = null);
+                          }
+                        });
+                      },
+                    ),
+                    ElevatedButton(
+                      child: const Text('Copiar al portapapeles'),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: decrypted));
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Contraseña copiada')),
+                          );
+                        }
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    hideTimer?.cancel();
+                    Navigator.pop(ctx);
                   },
-                ),
-                ElevatedButton(
-                  child: const Text('Copiar al portapapeles'),
-                  onPressed: () async {
-                    // Copiar contraseña aquí
-                  },
+                  child: const Text('Cerrar'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cerrar'),
-              ),
-            ],
           ),
         );
-        //_startClipboardCountdown();
       } else {
         await Clipboard.setData(ClipboardData(text: decrypted));
         _startClipboardCountdown();
