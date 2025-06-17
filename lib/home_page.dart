@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:giltzapp_1/encryption_service.dart';
+import 'package:GiltzApp/encryption_service.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'package:share_plus/share_plus.dart';
 // ignore: deprecated_member_use
-import 'dart:html' as html; // Solo para web
+
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:progress_bar_countdown/progress_bar_countdown.dart';
+// ignore: deprecated_member_use, avoid_web_libraries_in_flutter
+
+import 'web_utils.dart'
+    if (dart.library.html) 'web_utils_web.dart';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -421,25 +424,29 @@ class _HomePageState extends State<HomePage> {
     if (decrypted.isEmpty) throw Exception('Texto a copiar vacío');
 
     if (kIsWeb) {
-      final isMobileWeb = RegExp(r'iPhone|iPad|Android', caseSensitive: false)
-          .hasMatch(html.window.navigator.userAgent);
+      final isMobile = isMobileWeb();
       
-      if (isMobileWeb) {
+      if (isMobileWeb()) {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Contraseña descifrada'),
+            title: const Text('Mostrar contraseña'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SelectableText(decrypted),
-                const SizedBox(height: 20),
-                LinearProgressIndicator(
-                  value: _progress,
-                  backgroundColor: Colors.grey[300],
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                const Text('Por seguridad, la contraseña no se mostrará directamente.'),
+                ElevatedButton(
+                  child: const Text('Mostrar durante 5 segundos'),
+                  onPressed: () async {
+                    // Mostrar contraseña temporalmente aquí
+                  },
                 ),
-                Text('Tiempo restante: $_remainingSeconds segundos'),
+                ElevatedButton(
+                  child: const Text('Copiar al portapapeles'),
+                  onPressed: () async {
+                    // Copiar contraseña aquí
+                  },
+                ),
               ],
             ),
             actions: [
@@ -450,7 +457,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         );
-        _startClipboardCountdown();
+        //_startClipboardCountdown();
       } else {
         await Clipboard.setData(ClipboardData(text: decrypted));
         _startClipboardCountdown();

@@ -1,15 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show  kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 // ignore: depend_on_referenced_packages
 //import 'package:crypto/crypto.dart';
 import 'home_page.dart'; 
-// Import dart:html as web only for web platform
+
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as web;
+
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'encryption_service.dart';
+import 'dart:typed_data';
+
+import 'web_utils.dart'
+    if (dart.library.html) 'web_utils_web.dart';
+
+// Use conditional import for web only
+// ignore: uri_does_not_exist
+
+// Conditional import for web platform
+// Place this at the top of the file, after other imports
+// ignore: uri_does_not_exist, deprecated_member_use
 
 
 void main() async {
@@ -680,18 +691,15 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
     _confirmPasswordController.clear();
     _isLogin = true;
   });
-  
-  // 3. Limpia la URL en web (opcional pero recomendado)
+
   if (kIsWeb) {
-    final uri = Uri.parse(web.window.location.href);
-    final newUrl = uri.replace(path: '/', query: '').toString();
-    web.window.history.replaceState(null, '', newUrl);
+    clearWebUrl(); // Esto solo hará algo en web, en móvil no hace nada.
   }
+    
   
   // 4. Redirige al login y elimina el historial de navegación
   Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
 }
-
 
 
   final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
