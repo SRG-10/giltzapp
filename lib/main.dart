@@ -183,8 +183,6 @@ class _AuthPageState extends State<AuthPage> {
 
         await EncryptionService.initialize(masterKey);
 
-        if(!mounted) return; // Verifica si el widget sigue montado
-
         if (mounted)
         {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
@@ -193,27 +191,27 @@ class _AuthPageState extends State<AuthPage> {
 
       } on AuthException catch (error) {
         // Mostrar el error en un AlertDialog
-        if (mounted) { setState(() => _isLoading = false); }
-        showDialog(
-          // ignore: use_build_context_synchronously
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Error de inicio de sesión'),
-            content: Text(error.message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-        setState(() {
-          _errorMessage = error.message;
-        });
+        //if (mounted) { setState(() => _isLoading = false); }
+        if (mounted) {setState(() => _errorMessage = error.message);
+          showDialog(
+            // ignore: use_build_context_synchronously
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Error de inicio de sesión'),
+              content: Text(error.message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       } catch (e) {
         if (mounted)
         {
+          setState(() => _errorMessage = 'Error inesperado durante el login');
           showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -222,15 +220,15 @@ class _AuthPageState extends State<AuthPage> {
             content: Text('Error inesperado durante el login'),
           ),
         );
-        setState(() {
-          _errorMessage = 'Error inesperado durante el login';
-        });
         }
        
       } finally {
-        setState(() {
+        if (mounted){
+          setState(() {
           _isLoading = false;
         });
+        }
+        
       }
     }
   }

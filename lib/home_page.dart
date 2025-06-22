@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:GiltzApp/encryption_service.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:http/http.dart' as http;
 // ignore: deprecated_member_use
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -69,6 +70,8 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> _passwords = [];
   List<Map<String, dynamic>> _categories = [];
 
+
+
   @override
   void initState() {
     super.initState();
@@ -122,145 +125,219 @@ class _HomePageState extends State<HomePage> {
   }
 
   // MÉTODO PARA AGREGAR CONTRASEÑA
+  // MÉTODO PARA AGREGAR CONTRASEÑA CON FORMULARIO VALIDADO
   Future<void> _addPassword() async {
+  final user = _supabase.auth.currentUser;
+  if (user == null) return;
 
+  try {
     final masterKey = await EncryptionService.currentMasterKey;
-
-      if (masterKey == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Sesión no válida')),
-          );
-        }
-        return;
-      }
-
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-
-    try {
-      // 1. Obtener clave maestra actual
-      final masterKey = await EncryptionService.currentMasterKey;
-      if (masterKey == null) {
+    if (masterKey == null) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error: Sesión no válida')),
         );
-        return;
       }
+      return;
+    }
 
-      // 2. Obtener datos del formulario
-      final TextEditingController siteController = TextEditingController();
-      final TextEditingController userController = TextEditingController();
-      final TextEditingController passController = TextEditingController();
-      final TextEditingController notesController = TextEditingController();
-
-      final userResponse = await _supabase
+    final userResponse = await _supabase
         .from('users')
         .select('id')
         .eq('auth_id', user.id)
         .single();
 
-      final userId = userResponse['id'] as int;
+    final userId = userResponse['id'] as int;
 
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Nueva contraseña'),
-          content: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(
-                  controller: siteController,
-                  decoration: const InputDecoration(labelText: 'Sitio'),
+    final titleController = TextEditingController();
+    final userController = TextEditingController();
+    final passController = TextEditingController();
+    final urlController = TextEditingController();
+    bool _passwordVisible = false;
+    final _formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Nueva contraseña'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  autovalidateMode: AutovalidateMode.disabled,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Título',
+                          prefixIcon: Icon(Icons.title),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa un título';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: userController,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo o usuario',
+                          prefixIcon: Icon(Icons.person),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa el usuario o correo';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: passController,
+                        decoration: InputDecoration(
+                          labelText: 'Contraseña',
+                          prefixIcon: const Icon(Icons.lock),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.refresh), // Icono de generación
+                                tooltip: 'Generar contraseña segura',
+                                onPressed: () {
+                                  // Aquí pondrás la lógica para generar la contraseña automáticamente
+                                  // Ejemplo futuro:
+                                  // passController.text = PasswordGenerator.generate();
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  _passwordVisible ? Icons.visibility_off : Icons.visibility,
+                                ),
+                                tooltip: _passwordVisible ? 'Ocultar' : 'Mostrar',
+                                onPressed: () {
+                                  setState(() {
+                                    _passwordVisible = !_passwordVisible;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        obscureText: !_passwordVisible,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa la contraseña';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: urlController,
+                        decoration: const InputDecoration(
+                          labelText: 'Sitio web',
+                          prefixIcon: Icon(Icons.link),
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.url,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Por favor ingresa la URL';
+                          }
+                          if (!value.contains('.')) {
+                            return 'Introduce una URL válida';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                TextField(
-                  controller: userController,
-                  decoration: const InputDecoration(labelText: 'Usuario'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
                 ),
-                TextField(
-                  controller: passController,
-                  decoration: const InputDecoration(labelText: 'Contraseña'),
-                  obscureText: true,
-                ),
-                TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(labelText: 'Notas'),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      final titulo = titleController.text.trim();
+                      final nombreUsuario = userController.text.trim();
+                      final password = passController.text.trim();
+                      final enlace = urlController.text.trim();
+
+                      // Cifrar la contraseña
+                      final encrypted = await EncryptionService.encryptPassword(
+                        password,
+                        masterKey,
+                      );
+
+                      // Crear/actualizar sitio web
+                      final webSiteResponse = await _supabase
+                          .from('web_sites')
+                          .upsert({
+                            'usuario_id': userId,
+                            'nombre_sitio': titulo,
+                            'enlace': enlace,
+                          }, onConflict: 'nombre_sitio,usuario_id')
+                          .select('id')
+                          .single();
+
+                      final sitioWebId = webSiteResponse['id'] as int;
+
+                      // Insertar contraseña cifrada
+                      await _supabase.from('passwords').insert({
+                        'sitio_web_id': sitioWebId,
+                        'nombre_usuario': nombreUsuario,
+                        'hash_contrasena': encrypted['hash_contrasena'],
+                        'iv': encrypted['iv'],
+                        'auth_tag': encrypted['auth_tag'],
+                        'user_id': userId,
+                      });
+
+                      await _loadPasswords();
+                      Navigator.pop(context);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Contraseña añadida')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Guardar'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final sitio = siteController.text.trim();
-                final nombreUsuario = userController.text.trim();
-                final password = passController.text.trim();
-                final notas = notesController.text.trim();
-
-                if (sitio.isEmpty || password.isEmpty) return;
-
-                // Obtener ID numérico del usuario
-                final userResponse = await _supabase
-                    .from('users')
-                    .select('id')
-                    .eq('auth_id', user.id)
-                    .single();
-                final userId = userResponse['id'] as int;
-
-                // 3. Cifrar la contraseña
-                final encrypted = await EncryptionService.encryptPassword(password, masterKey);
-
-                // 4. Crear/actualizar sitio web
-                final webSiteResponse = await _supabase
-                    .from('web_sites')
-                    .upsert({
-                      'usuario_id': userId,
-                      'nombre_sitio': sitio,
-                    }, 
-                    onConflict: 'nombre_sitio,usuario_id')
-                    .select('id')
-                    .single();
-                
-                final sitioWebId = webSiteResponse['id'] as int;
-
-                // 5. Insertar contraseña cifrada
-                await _supabase.from('passwords').insert({
-                  'sitio_web_id': sitioWebId,
-                  'nombre_usuario': nombreUsuario,
-                  'hash_contrasena': encrypted['hash_contrasena'],
-                  'iv': encrypted['iv'],
-                  'auth_tag': encrypted['auth_tag'],
-                  'notas': notas,
-                  'user_id': userId,
-                });
-
-                if (encrypted['hash_contrasena'] == null || 
-                    encrypted['iv'] == null || 
-                    encrypted['auth_tag'] == null) {
-                  throw Exception('Error: Datos cifrados incompletos');
-                }
-
-                await _loadPasswords();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Contraseña añadida')),
-                );
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
+            );
+          },
+        );
+      },
+    );
+  } catch (e) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
     }
   }
+}
+
+
+
+
+
+
+
+
 
 
   Future<void> _verifySession() async {
@@ -357,23 +434,29 @@ class _HomePageState extends State<HomePage> {
       final userId = userResponse['id'] as int;
 
       final response = await _supabase
-        .from('passwords')
-        .select('''
-            id, 
-            sitio_web_id, 
-            nombre_usuario, 
-            notas,
-            hash_contrasena,
-            iv,
-            auth_tag
-        ''')
-        .eq('user_id', userId);
+      .from('passwords')
+      .select('''
+        id, 
+        sitio_web_id, 
+        nombre_usuario, 
+        notas,
+        hash_contrasena,
+        iv,
+        auth_tag,
+        web_sites (
+          id,
+          nombre_sitio,
+          logo
+        )
+      ''')
+      .eq('user_id', userId);
 
 
       if (mounted) {
         setState(() {
           _passwords = List<Map<String, dynamic>>.from(response);
           _loading = false;
+
         });
       }
     } catch (e) {
@@ -397,6 +480,7 @@ class _HomePageState extends State<HomePage> {
       await EncryptionService.clear();
       _redirectToLogin();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al cerrar sesión: ${e.toString()}')),
       );
@@ -459,6 +543,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
+
 
 // Widget de la barra de progreso en el build
 
@@ -578,6 +664,14 @@ class _HomePageState extends State<HomePage> {
                     itemCount: _passwords.length,
                     itemBuilder: (context, index) {
                       final password = _passwords[index];
+
+                      final webSite = password['web_sites'] ?? {};
+
+                      final nombreSitio = webSite['nombre_sitio'] ?? 'Sin título';
+                      final logoBytes = webSite['logo'];
+                      final nombreUsuario = password['nombre_usuario']?.isNotEmpty ?? false 
+                          ? password['nombre_usuario'] 
+                          : 'Sin usuario';
                       
                       // Verificar integridad antes de mostrar
                       final bool isCorrupt = password['hash_contrasena'] == null || 
@@ -587,12 +681,17 @@ class _HomePageState extends State<HomePage> {
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         child: ListTile(
-                          leading: const Icon(Icons.lock),
-                          title: Text(password['notas'] ?? 'Sin nombre'),
+                          leading: (logoBytes != null && logoBytes.isNotEmpty)
+                                      ? CircleAvatar(
+                                          backgroundImage: MemoryImage(logoBytes),
+                                          backgroundColor: Colors.transparent,
+                                        )
+                                      : const Icon(Icons.lock),
+                          title: Text(nombreSitio),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Usuario: ${password['nombre_usuario'] ?? ''}'),
+                              Text('Usuario: $nombreUsuario'),
                               if (isCorrupt) 
                                 const Text('⚠️ Contraseña corrupta', 
                                   style: TextStyle(color: Colors.red)),
