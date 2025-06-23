@@ -180,11 +180,16 @@ Future<void> showPasswordGeneratorDialog(BuildContext context, TextEditingContro
 class EditPasswordPage extends StatefulWidget {
   final Map<String, dynamic> password;
   final Map<String, dynamic> webSite;
+  final List<Map<String, dynamic>> categories; // <-- Nuevo parámetro
+  final Future<int?> Function(BuildContext) addCategoryFromDialog; // <-- Nuevo parámetro
+
   
   const EditPasswordPage({
     super.key,
     required this.password,
     required this.webSite,
+    required this.categories,
+    required this.addCategoryFromDialog, // <-- Nuevo parámetro
   });
 
   @override
@@ -192,6 +197,7 @@ class EditPasswordPage extends StatefulWidget {
 }
 
 class _EditPasswordPageState extends State<EditPasswordPage> {
+  int? selectedCategoryId; // <-- Declarar aquí
   late TextEditingController _titleController;
   late TextEditingController _userController;
   late TextEditingController _passController;
@@ -208,6 +214,7 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
     _userController = TextEditingController(text: widget.password['nombre_usuario']);
     _passController = TextEditingController();
     _urlController = TextEditingController(text: widget.webSite['enlace'] ?? '');
+    selectedCategoryId = widget.webSite['categoria_id'] as int?;
 
     _loadDecryptedPassword();
   }
@@ -221,9 +228,11 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
       authTag: widget.password['auth_tag'],
       key: masterKey,
     );
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _passController.text = decrypted;
     });
+    }
   }
 
   Future<void> _updatePassword() async {
@@ -239,6 +248,7 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
       await _supabase.from('web_sites').update({
         'nombre_sitio': _titleController.text.trim(),
         'enlace': _urlController.text.trim(),
+        'categoria_id': selectedCategoryId, // <-- aquí
       }).eq('id', widget.webSite['id']);
       
       // 2. Actualizar contraseña (solo si cambió)
@@ -317,6 +327,7 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
       setState(() => _isLoading = false);
     }
   }
+  
 
   @override
   Widget build(BuildContext context) {
@@ -418,6 +429,51 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
                         return null;
                       },
                     ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<int>(
+                      value: selectedCategoryId,
+                      decoration: const InputDecoration(
+                        labelText: 'Categoría',
+                        prefixIcon: Icon(Icons.category),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        DropdownMenuItem<int>(
+                          value: null,
+                          child: Text('Sin categoría'),
+                        ),
+                        ...widget.categories.map((cat) => DropdownMenuItem<int>(
+                          value: cat['id'] as int,
+                          child: Text(cat['nombre']),
+                        )),
+                        DropdownMenuItem<int>(
+                          value: -1,
+                          child: Row(
+                            children: const [
+                              Icon(Icons.add, size: 18),
+                              SizedBox(width: 8),
+                              Text('Agregar nueva categoría'),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) async {
+                        if (value == -1) {
+                          final newCatId = await widget.addCategoryFromDialog(context);
+                          if (newCatId != null) {
+                            setState(() {
+                              selectedCategoryId = newCatId;
+                            });
+                          }
+                        } else {
+                          setState(() {
+                            selectedCategoryId = value;
+                          });
+                        }
+                      },
+                      validator: (value) => null,
+                    ),
+
                     const SizedBox(height: 32),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -451,6 +507,8 @@ class _HomePageState extends State<HomePage> {
   Timer? _clipboardTimer;
   int _remainingSeconds = 0;
   double get _progress => _remainingSeconds / _clipboardSeconds;
+  int? _selectedCategoryId;
+
 
   // Métodos de control
   void _startClipboardCountdown() {
@@ -576,8 +634,10 @@ class _HomePageState extends State<HomePage> {
     final userController = TextEditingController();
     final passController = TextEditingController();
     final urlController = TextEditingController();
-    bool _passwordVisible = false;
-    final _formKey = GlobalKey<FormState>();
+    bool passwordVisible = false;
+    final formKey = GlobalKey<FormState>();
+
+    int? selectedCategoryId;
 
     await showDialog(
       context: context,
@@ -588,7 +648,7 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Nueva contraseña'),
               content: SingleChildScrollView(
                 child: Form(
-                  key: _formKey,
+                  key: formKey,
                   autovalidateMode: AutovalidateMode.disabled,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -643,19 +703,19 @@ class _HomePageState extends State<HomePage> {
                               ),
                               IconButton(
                                 icon: Icon(
-                                  _passwordVisible ? Icons.visibility_off : Icons.visibility,
+                                  passwordVisible ? Icons.visibility_off : Icons.visibility,
                                 ),
-                                tooltip: _passwordVisible ? 'Ocultar' : 'Mostrar',
+                                tooltip: passwordVisible ? 'Ocultar' : 'Mostrar',
                                 onPressed: () {
                                   setState(() {
-                                    _passwordVisible = !_passwordVisible;
+                                    passwordVisible = !passwordVisible;
                                   });
                                 },
                               ),
                             ],
                           ),
                         ),
-                        obscureText: !_passwordVisible,
+                        obscureText: !passwordVisible,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Por favor ingresa la contraseña';
@@ -683,6 +743,50 @@ class _HomePageState extends State<HomePage> {
                           return null;
                         },
                       ),
+                      DropdownButtonFormField<int>(
+                        value: selectedCategoryId,
+                        decoration: const InputDecoration(
+                          labelText: 'Categoría',
+                          prefixIcon: Icon(Icons.category),
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          DropdownMenuItem<int>(
+                            value: null,
+                            child: Text('Sin categoría'),
+                          ),
+                          ..._categories.map((cat) => DropdownMenuItem<int>(
+                            value: cat['id'] as int,
+                            child: Text(cat['nombre']),
+                          )),
+                          DropdownMenuItem<int>(
+                            value: -1,
+                            child: Row(
+                              children: const [
+                                Icon(Icons.add, size: 18),
+                                SizedBox(width: 8),
+                                Text('Agregar nueva categoría'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) async {
+                          if (value == -1) {
+                            final newCatId = await _addCategoryFromDialog(context);
+                            if (newCatId != null) {
+                              setState(() {
+                                selectedCategoryId = newCatId;
+                              });
+                            }
+                          } else {
+                            setState(() {
+                              selectedCategoryId = value;
+                            });
+                          }
+                        },
+                        validator: (value) => null, // Puede ser null (sin categoría)
+                      ),
+
                     ],
                   ),
                 ),
@@ -694,7 +798,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    if (_formKey.currentState!.validate()) {
+                    if (formKey.currentState!.validate()) {
                       final titulo = titleController.text.trim();
                       final nombreUsuario = userController.text.trim();
                       final password = passController.text.trim();
@@ -708,14 +812,16 @@ class _HomePageState extends State<HomePage> {
 
                       // Crear/actualizar sitio web
                       final webSiteResponse = await _supabase
-                          .from('web_sites')
-                          .upsert({
-                            'usuario_id': userId,
-                            'nombre_sitio': titulo,
-                            'enlace': enlace,
-                          }, onConflict: 'nombre_sitio,usuario_id')
-                          .select('id')
-                          .single();
+                        .from('web_sites')
+                        .upsert({
+                          'usuario_id': userId,
+                          'nombre_sitio': titulo,
+                          'enlace': enlace,
+                          'categoria_id': selectedCategoryId, // <-- Aquí
+                        }, onConflict: 'nombre_sitio,usuario_id')
+                        .select('id')
+                        .single();
+
 
                       final sitioWebId = webSiteResponse['id'] as int;
 
@@ -756,6 +862,47 @@ class _HomePageState extends State<HomePage> {
 }
 
 
+Future<int?> _addCategoryFromDialog(BuildContext context) async {
+  final controller = TextEditingController();
+  final result = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Nueva categoría'),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration(labelText: 'Nombre de la categoría'),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, controller.text.trim()),
+          child: const Text('Guardar'),
+        ),
+      ],
+    ),
+  );
+  if (result != null && result.isNotEmpty) {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return null;
+    final userResponse = await _supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single();
+    final userId = userResponse['id'] as int;
+    final insertResponse = await _supabase.from('categories').insert({
+      'usuario_id': userId,
+      'nombre': result,
+    }).select('id').single();
+    await _loadCategories();
+    return insertResponse['id'] as int?;
+  }
+  return null;
+}
 
 
 
@@ -871,7 +1018,8 @@ class _HomePageState extends State<HomePage> {
           id,
           nombre_sitio,
           enlace,
-          logo
+          logo,
+          categoria_id
         )
       ''')
       .eq('user_id', userId);
@@ -991,6 +1139,15 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
+    // Filtra las contraseñas por categoría seleccionada
+    final filteredPasswords = _selectedCategoryId == null
+        ? _passwords
+        : _passwords.where((p) {
+            final webSite = p['web_sites'] as Map<String, dynamic>?;
+            final categoriaId = webSite?['categoria_id'] as int?;
+            return categoriaId == _selectedCategoryId;
+          }).toList();
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -1025,28 +1182,39 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.category),
-                title: const Text('Categorías'),
-                subtitle: _categories.isEmpty
-                    ? const Text('No hay categorías')
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: _categories
-                            .map((cat) => Text(cat['nombre'] ?? '', style: const TextStyle(fontSize: 14)))
-                            .toList(),
-                      ),
-                onTap: () {},
+                leading: const Icon(Icons.all_inbox),
+                title: const Text('Todas las categorías'),
+                selected: _selectedCategoryId == null,
+                onTap: () {
+                  setState(() {
+                    _selectedCategoryId = null;
+                    Navigator.pop(context);
+                  });
+                },
+
               ),
+              ..._categories.map((cat) => ListTile(
+                leading: const Icon(Icons.folder),
+                title: Text(cat['nombre'] ?? ''),
+                selected: _selectedCategoryId == cat['id'],
+                onTap: () {
+                  setState(() {
+                    _selectedCategoryId = cat['id'];
+                    Navigator.pop(context);
+                  });
+                },
+              )),
+                ListTile(
+                  leading: const Icon(Icons.vpn_key),
+                  title: const Text('Agregar contraseña'),
+                  onTap: _addPassword, // Botón global
+                ),
               ListTile(
                 leading: const Icon(Icons.add),
                 title: const Text('Agregar categoría'),
                 onTap: _addCategory,
               ),
-              ListTile(
-                leading: const Icon(Icons.vpn_key),
-                title: const Text('Agregar contraseña'),
-                onTap: _addPassword,
-              ),
+              
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.exit_to_app),
@@ -1084,13 +1252,22 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+              if (_selectedCategoryId != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Agregar contraseña en esta categoría'),
+                    onPressed: () => _addPasswordForCategory(_selectedCategoryId!),
+                  ),
+                ),
             Expanded(
               child: _passwords.isEmpty
                   ? const Center(child: Text('No hay contraseñas guardadas'))
                   :ListView.builder(
-                    itemCount: _passwords.length,
+                    itemCount: filteredPasswords.length,
                     itemBuilder: (context, index) {
-                      final password = _passwords[index];
+                      final password = filteredPasswords[index];
 
                       final webSite = password['web_sites'] ?? {};
 
@@ -1155,6 +1332,8 @@ class _HomePageState extends State<HomePage> {
                                 builder: (context) => EditPasswordPage(
                                   password: password,
                                   webSite: webSite,
+                                  categories: _categories,
+                                  addCategoryFromDialog: _addCategoryFromDialog,
                                 ),
                               ),
                             );
@@ -1176,13 +1355,218 @@ class _HomePageState extends State<HomePage> {
             )
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _addPassword,
-          tooltip: 'Agregar contraseña',
-          child: const Icon(Icons.add),
-        ),
       ),
     );
   }
+
+  Future<void> _addPasswordForCategory(int categoriaId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Sesión no válida')),
+          );
+        }
+        return;
+      }
+
+      final userResponse = await _supabase
+          .from('users')
+          .select('id')
+          .eq('auth_id', user.id)
+          .single();
+
+      final userId = userResponse['id'] as int;
+
+      final titleController = TextEditingController();
+      final userController = TextEditingController();
+      final passController = TextEditingController();
+      final urlController = TextEditingController();
+      bool passwordVisible = false;
+      final formKey = GlobalKey<FormState>();
+
+      await showDialog(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Nueva contraseña'),
+                content: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    autovalidateMode: AutovalidateMode.disabled,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: titleController,
+                          decoration: const InputDecoration(
+                            labelText: 'Título',
+                            prefixIcon: Icon(Icons.title),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa un título';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: userController,
+                          decoration: const InputDecoration(
+                            labelText: 'Correo o usuario',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            prefixIcon: Icon(Icons.person),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa el usuario o correo';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: passController,
+                          decoration: InputDecoration(
+                            labelText: 'Contraseña',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.refresh),
+                                  tooltip: 'Generar contraseña segura',
+                                  onPressed: () async {
+                                    await showPasswordGeneratorDialog(context, passController);
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    passwordVisible ? Icons.visibility_off : Icons.visibility,
+                                  ),
+                                  tooltip: passwordVisible ? 'Ocultar' : 'Mostrar',
+                                  onPressed: () {
+                                    setState(() {
+                                      passwordVisible = !passwordVisible;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          obscureText: !passwordVisible,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa la contraseña';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: urlController,
+                          decoration: const InputDecoration(
+                            labelText: 'Sitio web',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            prefixIcon: Icon(Icons.link),
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.url,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa la URL';
+                            }
+                            if (!value.contains('.')) {
+                              return 'Introduce una URL válida';
+                            }
+                            return null;
+                          },
+                        ),
+                        // NO incluyas el selector de categoría aquí
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (formKey.currentState!.validate()) {
+                        final titulo = titleController.text.trim();
+                        final nombreUsuario = userController.text.trim();
+                        final password = passController.text.trim();
+                        final enlace = urlController.text.trim();
+
+                        // Cifrar la contraseña
+                        final encrypted = await EncryptionService.encryptPassword(
+                          password,
+                          masterKey,
+                        );
+
+                        // Crear/actualizar sitio web con la categoría seleccionada
+                        final webSiteResponse = await _supabase
+                            .from('web_sites')
+                            .upsert({
+                              'usuario_id': userId,
+                              'nombre_sitio': titulo,
+                              'enlace': enlace,
+                              'categoria_id': categoriaId, // <-- Aquí se asocia la categoría
+                            }, onConflict: 'nombre_sitio,usuario_id')
+                            .select('id')
+                            .single();
+
+                        final sitioWebId = webSiteResponse['id'] as int;
+
+                        // Insertar contraseña cifrada
+                        await _supabase.from('passwords').insert({
+                          'sitio_web_id': sitioWebId,
+                          'nombre_usuario': nombreUsuario,
+                          'hash_contrasena': encrypted['hash_contrasena'],
+                          'iv': encrypted['iv'],
+                          'auth_tag': encrypted['auth_tag'],
+                          'user_id': userId,
+                        });
+
+                        await _loadPasswords();
+                        Navigator.pop(context);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Contraseña añadida')),
+                          );
+                        }
+                      }
+                    },
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  
 }
 
