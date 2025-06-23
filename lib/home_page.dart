@@ -4,6 +4,7 @@ import 'package:GiltzApp/encryption_service.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:gpassword/gpassword.dart';
 // ignore: deprecated_member_use
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -18,6 +19,428 @@ class HomePage extends StatefulWidget {
 
   @override
   State<HomePage> createState() => _HomePageState();
+}
+
+Future<void> showPasswordGeneratorDialog(BuildContext context, TextEditingController controller) async {
+    int length = 16;
+    bool useUpper = true;
+    bool useNumbers = true;
+    bool useSymbols = true;
+    String generated = '';
+
+    final gpassword = GPassword();
+
+    void generate() {
+      // Si todas están desmarcadas, solo minúsculas
+      if (!useUpper && !useNumbers && !useSymbols) {
+        generated = gpassword.generate(
+          passwordLength: length,
+          includeUppercase: false,
+          includeLowercase: true,
+          includeNumbers: false,
+          includeSymbols: false,
+        );
+      } else {
+        generated = gpassword.generate(
+          passwordLength: length,
+          includeUppercase: useUpper,
+          includeLowercase: true, // SIEMPRE minúsculas
+          includeNumbers: useNumbers,
+          includeSymbols: useSymbols,
+        );
+      }
+    }
+
+    generate(); // Genera una inicial
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final isMobile = screenWidth < 700;
+            final dialogWidth = isMobile ? screenWidth * 0.98 : 500.0;
+
+            return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 24),
+              title: const Text('Generar contraseña segura'),
+              content: Container(
+                width: dialogWidth,
+                constraints: const BoxConstraints(
+                  minWidth: 280,
+                  maxWidth: 600,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Campo de contraseña generada, ancho fijo, saltos de línea
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextFormField(
+                          readOnly: true,
+                          controller: TextEditingController(text: generated),
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Contraseña generada',
+                            border: OutlineInputBorder(),
+                            suffixIcon: Icon(Icons.copy),
+                          ),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: generated));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Contraseña copiada')),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text('Longitud:'),
+                          Expanded(
+                            child: Slider(
+                              value: length.toDouble(),
+                              min: 8,
+                              max: 64,
+                              divisions: 56,
+                              label: '$length',
+                              onChanged: (v) => setState(() {
+                                length = v.round();
+                                generate();
+                              }),
+                            ),
+                          ),
+                          Text('$length'),
+                        ],
+                      ),
+                      CheckboxListTile(
+                        value: useUpper,
+                        onChanged: (v) => setState(() {
+                          useUpper = v!;
+                          generate();
+                        }),
+                        title: const Text('Mayúsculas'),
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      CheckboxListTile(
+                        value: useNumbers,
+                        onChanged: (v) => setState(() {
+                          useNumbers = v!;
+                          generate();
+                        }),
+                        title: const Text('Números'),
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      CheckboxListTile(
+                        value: useSymbols,
+                        onChanged: (v) => setState(() {
+                          useSymbols = v!;
+                          generate();
+                        }),
+                        title: const Text('Caracteres especiales'),
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Aleatorizar'),
+                        onPressed: () => setState(() => generate()),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    controller.text = generated;
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Usar esta contraseña'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+  }
+
+// Página de edición de contraseña
+class EditPasswordPage extends StatefulWidget {
+  final Map<String, dynamic> password;
+  final Map<String, dynamic> webSite;
+  
+  const EditPasswordPage({
+    super.key,
+    required this.password,
+    required this.webSite,
+  });
+
+  @override
+  State<EditPasswordPage> createState() => _EditPasswordPageState();
+}
+
+class _EditPasswordPageState extends State<EditPasswordPage> {
+  late TextEditingController _titleController;
+  late TextEditingController _userController;
+  late TextEditingController _passController;
+  late TextEditingController _urlController;
+  bool _passwordVisible = false;
+  final _formKey = GlobalKey<FormState>();
+  final _supabase = Supabase.instance.client;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.webSite['nombre_sitio']);
+    _userController = TextEditingController(text: widget.password['nombre_usuario']);
+    _passController = TextEditingController();
+    _urlController = TextEditingController(text: widget.webSite['enlace'] ?? '');
+
+    _loadDecryptedPassword();
+  }
+
+  Future<void> _loadDecryptedPassword() async {
+    final masterKey = await EncryptionService.currentMasterKey;
+    if (masterKey == null) return;
+    final decrypted = await EncryptionService.decryptPassword(
+      hashContrasena: widget.password['hash_contrasena'],
+      ivBytes: widget.password['iv'],
+      authTag: widget.password['auth_tag'],
+      key: masterKey,
+    );
+    if (mounted) setState(() {
+      _passController.text = decrypted;
+    });
+  }
+
+  Future<void> _updatePassword() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) return;
+      
+      // 1. Actualizar sitio web
+      await _supabase.from('web_sites').update({
+        'nombre_sitio': _titleController.text.trim(),
+        'enlace': _urlController.text.trim(),
+      }).eq('id', widget.webSite['id']);
+      
+      // 2. Actualizar contraseña (solo si cambió)
+      final newPassword = _passController.text.trim();
+      if (newPassword.isNotEmpty) {
+        final encrypted = await EncryptionService.encryptPassword(newPassword, masterKey);
+        
+        await _supabase.from('passwords').update({
+          'nombre_usuario': _userController.text.trim(),
+          'hash_contrasena': encrypted['hash_contrasena'],
+          'iv': encrypted['iv'],
+          'auth_tag': encrypted['auth_tag'],
+        }).eq('id', widget.password['id']);
+      }
+      
+      Navigator.pop(context, true); // Indica éxito
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _deletePassword() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar contraseña'),
+        content: const Text('¿Estás seguro de eliminar esta contraseña permanentemente?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // 1. Eliminar contraseña
+      await _supabase.from('passwords')
+        .delete()
+        .eq('id', widget.password['id']);
+      
+      // 2. Eliminar sitio web si no hay más contraseñas asociadas
+      final response = await _supabase
+          .from('passwords')
+          .select('id')
+          .eq('sitio_web_id', widget.webSite['id'])
+          .count(CountOption.exact);
+
+      final passwordsCount = response.count;
+
+      if (passwordsCount == 0) {
+        await _supabase.from('web_sites')
+          .delete()
+          .eq('id', widget.webSite['id']);
+      }
+      
+      Navigator.pop(context, true); // Indica éxito
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Contraseña'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _deletePassword,
+            tooltip: 'Eliminar contraseña',
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Título',
+                        prefixIcon: Icon(Icons.title),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Introduce un título';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _userController,
+                      decoration: const InputDecoration(
+                        labelText: 'Correo o usuario',
+                        prefixIcon: Icon(Icons.person),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Introduce usuario o correo';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passController,
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        prefixIcon: const Icon(Icons.lock),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: Row (
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.refresh),
+                              tooltip: 'Generar contraseña segura',
+                              onPressed: () async {
+                                await showPasswordGeneratorDialog(context, _passController);
+                              },
+                            ),
+                            IconButton(
+                              icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
+                              tooltip: _passwordVisible ? 'Ocultar' : 'Mostrar',
+                              onPressed: () {
+                                setState(() {
+                                  _passwordVisible = !_passwordVisible;
+                                });
+                              },
+                            )
+                          ],
+                        )
+                      ),
+                      obscureText: !_passwordVisible,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _urlController,
+                      decoration: const InputDecoration(
+                        labelText: 'Sitio web',
+                        prefixIcon: Icon(Icons.link),
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.url,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Introduce la URL';
+                        }
+                        if (!value.contains('.')) {
+                          return 'Introduce una URL válida';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[300],
+                          ),
+                          child: const Text('Cancelar', style: TextStyle(color: Colors.black)),
+                        ),
+                        ElevatedButton(
+                          onPressed: _updatePassword,
+                          child: const Text('Guardar Cambios'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
 }
 
 class _HomePageState extends State<HomePage> {
@@ -189,6 +612,7 @@ class _HomePageState extends State<HomePage> {
                         controller: userController,
                         decoration: const InputDecoration(
                           labelText: 'Correo o usuario',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
                           prefixIcon: Icon(Icons.person),
                           border: OutlineInputBorder(),
                         ),
@@ -204,6 +628,7 @@ class _HomePageState extends State<HomePage> {
                         controller: passController,
                         decoration: InputDecoration(
                           labelText: 'Contraseña',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
                           prefixIcon: const Icon(Icons.lock),
                           border: const OutlineInputBorder(),
                           suffixIcon: Row(
@@ -212,10 +637,8 @@ class _HomePageState extends State<HomePage> {
                               IconButton(
                                 icon: const Icon(Icons.refresh), // Icono de generación
                                 tooltip: 'Generar contraseña segura',
-                                onPressed: () {
-                                  // Aquí pondrás la lógica para generar la contraseña automáticamente
-                                  // Ejemplo futuro:
-                                  // passController.text = PasswordGenerator.generate();
+                                onPressed: () async {
+                                  await showPasswordGeneratorDialog(context, passController);
                                 },
                               ),
                               IconButton(
@@ -245,6 +668,7 @@ class _HomePageState extends State<HomePage> {
                         controller: urlController,
                         decoration: const InputDecoration(
                           labelText: 'Sitio web',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
                           prefixIcon: Icon(Icons.link),
                           border: OutlineInputBorder(),
                         ),
@@ -446,6 +870,7 @@ class _HomePageState extends State<HomePage> {
         web_sites (
           id,
           nombre_sitio,
+          enlace,
           logo
         )
       ''')
@@ -519,8 +944,8 @@ class _HomePageState extends State<HomePage> {
         );
         return;
       } else {
+
         await Clipboard.setData(ClipboardData(text: decrypted));
-        _startClipboardCountdown();
       }
     } else {
       await Clipboard.setData(ClipboardData(text: decrypted));
@@ -545,10 +970,12 @@ class _HomePageState extends State<HomePage> {
 }
 
 
+  
+
+  
+
 
 // Widget de la barra de progreso en el build
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -697,12 +1124,45 @@ class _HomePageState extends State<HomePage> {
                                   style: TextStyle(color: Colors.red)),
                             ],
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.copy),
-                            onPressed: () {
-                              Timer.run(() => _copyToClipboard(context, password)); // Ejecutar inmediatamente tras el gesto
-                            },
+                           trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.person),
+                                tooltip: 'Copiar usuario',
+                                onPressed: () async {
+                                  if (nombreUsuario.isNotEmpty) {
+                                    await Clipboard.setData(ClipboardData(text: nombreUsuario));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Usuario copiado')),
+                                    );
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy),
+                                tooltip: 'Copiar contraseña',
+                                onPressed: () {
+                                  Timer.run(() => _copyToClipboard(context, password));
+                                },
+                              ),
+                            ],
                           ),
+                          onTap: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => EditPasswordPage(
+                                  password: password,
+                                  webSite: webSite,
+                                ),
+                              ),
+                            );
+                            
+                            if (result == true) {
+                              _loadPasswords(); // Recargar lista después de editar/eliminar
+                            }
+                          },
                         ),
                       );
                     },
