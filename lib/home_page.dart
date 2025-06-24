@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:gpassword/gpassword.dart';
 // ignore: deprecated_member_use
-
+import 'dart:convert';
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart' show kIsWeb;
 // ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 
@@ -1121,8 +1122,12 @@ Future<int?> _addCategoryFromDialog(BuildContext context) async {
         );
         return;
       } else {
-
-        await Clipboard.setData(ClipboardData(text: decrypted));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por seguridad, no se permite ver ni copiar contraseñas en web, use la extensión.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     } else {
       await Clipboard.setData(ClipboardData(text: decrypted));
@@ -1290,7 +1295,22 @@ String _getCategoryName(int? categoryId) {
                 title: const Text('Agregar categoría'),
                 onTap: _addCategory,
               ),
-              
+             ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Editar perfil'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                  );
+                  if (result == true) {
+                    await _loadUsername(); // Vuelve a cargar el nombre de usuario actualizado
+                    setState(() {}); // Fuerza el rebuild si es necesario
+                  }
+                },
+
+              ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.exit_to_app),
@@ -1690,3 +1710,499 @@ String _getCategoryName(int? categoryId) {
   
 }
 
+class ChangePasswordPage extends StatefulWidget {
+  const ChangePasswordPage({super.key});
+
+  @override
+  State<ChangePasswordPage> createState() => _ChangePasswordPageState();
+}
+
+class _ChangePasswordPageState extends State<ChangePasswordPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _currentPassController = TextEditingController();
+  final _newPassController = TextEditingController();
+  final _confirmPassController = TextEditingController();
+  bool _currentPassVisible = false;
+  bool _newPassVisible = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cambiar contraseña')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _currentPassController,
+                obscureText: !_currentPassVisible,
+                decoration: InputDecoration(
+                  labelText: 'Contraseña actual',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(_currentPassVisible 
+                      ? Icons.visibility_off 
+                      : Icons.visibility),
+                    onPressed: () => setState(() => _currentPassVisible = !_currentPassVisible),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Ingresa tu contraseña actual';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _newPassController,
+                obscureText: !_newPassVisible,
+                decoration: InputDecoration(
+                  labelText: 'Nueva contraseña',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(_newPassVisible 
+                      ? Icons.visibility_off 
+                      : Icons.visibility),
+                    onPressed: () => setState(() => _newPassVisible = !_newPassVisible),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Ingresa una nueva contraseña';
+                  if (value.length < 12) return 'Mínimo 12 caracteres';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _confirmPassController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirmar nueva contraseña',
+                  prefixIcon: Icon(Icons.lock_reset),
+                ),
+                validator: (value) {
+                  if (value != _newPassController.text) return 'Las contraseñas no coinciden';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 32),
+              if (_errorMessage != null)
+                Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _updatePassword,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : const Text('Actualizar contraseña'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updatePassword() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      // 1. Reautenticar con contraseña actual
+      await supabase.auth.signInWithPassword(
+        email: user.email!,
+        password: _currentPassController.text,
+      );
+
+      // 2. Actualizar contraseña en Supabase Auth
+      await supabase.auth.updateUser(
+        UserAttributes(password: _newPassController.text),
+      );
+
+      // 3. Actualizar clave maestra de cifrado
+      final userResponse = await supabase
+          .from('users')
+          .select('id, salt')
+          .eq('auth_id', user.id)
+          .single();
+      
+      final newSalt = EncryptionService.generateSecureSalt();
+      final newMasterKey = await EncryptionService.deriveMasterKey(
+        _newPassController.text,
+        newSalt,
+      );
+
+      // 4. Actualizar salt en base de datos
+      await supabase.from('users').update({
+        'salt': base64Encode(newSalt),
+      }).eq('id', userResponse['id']);
+
+      // 5. Migrar contraseñas a nueva clave
+      await _migratePasswords(
+        userId: userResponse['id'] as int,
+        newKey: newMasterKey,
+      );
+
+      // 6. Actualizar clave en memoria
+      await EncryptionService.initialize(newMasterKey);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contraseña actualizada correctamente')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Error: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _migratePasswords({
+    required int userId,
+    required encrypt.Key newKey,
+  }) async {
+    final supabase = Supabase.instance.client;
+    final masterKey = await EncryptionService.currentMasterKey;
+    if (masterKey == null) return;
+
+    final passwords = await supabase
+        .from('passwords')
+        .select()
+        .eq('user_id', userId);
+
+    for (final pwd in passwords) {
+      final decrypted = await EncryptionService.decryptPassword(
+        hashContrasena: pwd['hash_contrasena'],
+        ivBytes: pwd['iv'],
+        authTag: pwd['auth_tag'],
+        key: masterKey,
+      );
+
+      final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
+
+      await supabase.from('passwords').update({
+        'hash_contrasena': encrypted['hash_contrasena'],
+        'iv': encrypted['iv'],
+        'auth_tag': encrypted['auth_tag'],
+      }).eq('id', pwd['id']);
+    }
+  }
+}
+
+class EditProfilePage extends StatefulWidget {
+  const EditProfilePage({super.key});
+
+  @override
+  State<EditProfilePage> createState() => _EditProfilePageState();
+}
+
+class _EditProfilePageState extends State<EditProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _currentPassController = TextEditingController();
+  final _newPassController = TextEditingController();
+  final _confirmPassController = TextEditingController();
+  bool _currentPassVisible = false;
+  bool _newPassVisible = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  bool _passwordChanged = false;
+  bool get _minLength => _newPassController.text.length >= 12;
+  bool get _hasUpper => _newPassController.text.contains(RegExp(r'[A-Z]'));
+  bool get _hasLower => _newPassController.text.contains(RegExp(r'[a-z]'));
+  bool get _hasDigit => _newPassController.text.contains(RegExp(r'\d'));
+  bool get _hasSpecial => _newPassController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
+
+  Widget _buildPasswordRequirements() {
+    if (_newPassController.text.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Text(
+          "La contraseña debe contener:",
+          style: TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+        const SizedBox(height: 4),
+        _buildRequirementRow("Al menos 12 caracteres", _minLength),
+        _buildRequirementRow("Una letra mayúscula", _hasUpper),
+        _buildRequirementRow("Una letra minúscula", _hasLower),
+        _buildRequirementRow("Un número", _hasDigit),
+        _buildRequirementRow("Un carácter especial", _hasSpecial),
+      ],
+    );
+  }
+
+  Widget _buildRequirementRow(String text, bool met) {
+    return Row(
+      children: [
+        Icon(
+          met ? Icons.check_circle : Icons.cancel,
+          color: met ? Colors.green : Colors.red,
+          size: 16,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: TextStyle(
+            color: met ? Colors.green : Colors.red,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      setState(() {
+        _emailController.text = user.email ?? '';
+      });
+      
+      final response = await Supabase.instance.client
+          .from('users')
+          .select('nombre_usuario')
+          .eq('auth_id', user.id)
+          .single();
+      
+      if (mounted) {
+        setState(() {
+          _usernameController.text = response['nombre_usuario'] ?? '';
+        });
+      }
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      final newemail = _emailController.text.trim();
+      if (user == null) return;
+
+      // 1. Actualizar email en Supabase Auth
+      await supabase.auth.updateUser(
+        UserAttributes(email: newemail),
+      );
+
+      // Actualizar nombre de usuario
+      await supabase.from('users').update({
+        'nombre_usuario': _usernameController.text.trim()
+      }).eq('auth_id', user.id);
+
+      // Actualizar contraseña si se proporcionó
+      if (_newPassController.text.isNotEmpty) {
+        // Reautenticación
+        await supabase.auth.signInWithPassword(
+          email: user.email!,
+          password: _currentPassController.text,
+        );
+
+        // Actualizar contraseña
+        await supabase.auth.updateUser(
+          UserAttributes(password: _newPassController.text),
+        );
+
+        // Actualizar clave maestra
+        final newSalt = EncryptionService.generateSecureSalt();
+        final newMasterKey = await EncryptionService.deriveMasterKey(
+          _newPassController.text,
+          newSalt,
+        );
+        
+        await supabase.from('users').update({
+          'salt': base64Encode(newSalt),
+        }).eq('auth_id', user.id);
+
+        final userResponse = await supabase
+          .from('users')
+          .select('id')
+          .eq('auth_id', user.id)
+          .single();
+        final userId = userResponse['id'] as int; // <- userId disponible
+        
+        await _migratePasswords(
+          userId: userId,  // Añade este parámetro
+          newKey: newMasterKey,
+        );
+        await EncryptionService.initialize(newMasterKey);
+        _passwordChanged = true;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Perfil actualizado correctamente')),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Error: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _migratePasswords({
+    required int userId,
+    required encrypt.Key newKey,
+  }) async {
+    final supabase = Supabase.instance.client;
+    final masterKey = await EncryptionService.currentMasterKey;
+    if (masterKey == null) return;
+
+    final passwords = await supabase
+        .from('passwords')
+        .select()
+        .eq('user_id', userId);
+
+    for (final pwd in passwords) {
+      final decrypted = await EncryptionService.decryptPassword(
+        hashContrasena: pwd['hash_contrasena'],
+        ivBytes: pwd['iv'],
+        authTag: pwd['auth_tag'],
+        key: masterKey,
+      );
+
+      final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
+
+      await supabase.from('passwords').update({
+        'hash_contrasena': encrypted['hash_contrasena'],
+        'iv': encrypted['iv'],
+        'auth_tag': encrypted['auth_tag'],
+      }).eq('id', pwd['id']);
+    }
+  }
+  
+  // ... (métodos _migratePasswords y dispose similares a ChangePasswordPage)
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Editar perfil')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de usuario',
+                  prefixIcon: Icon(Icons.person),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Ingresa un nombre de usuario';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _currentPassController,
+                obscureText: !_currentPassVisible,
+                decoration: InputDecoration(
+                  labelText: 'Contraseña actual',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(_currentPassVisible 
+                      ? Icons.visibility_off 
+                      : Icons.visibility),
+                    onPressed: () => setState(() => _currentPassVisible = !_currentPassVisible),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _newPassController,
+                obscureText: !_newPassVisible,
+                decoration: InputDecoration(
+                  labelText: 'Nueva contraseña',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(_newPassVisible ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => _newPassVisible = !_newPassVisible),
+                  ),
+                ),
+                onChanged: (_) => setState(() {}), // Para refrescar los requisitos en tiempo real
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    if (!_minLength) return 'Mínimo 12 caracteres';
+                    if (!_hasUpper) return 'Al menos una mayúscula';
+                    if (!_hasLower) return 'Al menos una minúscula';
+                    if (!_hasDigit) return 'Al menos un número';
+                    if (!_hasSpecial) return 'Al menos un carácter especial';
+                  }
+                  return null;
+                },
+              ),
+              if (_newPassController.text.isNotEmpty) _buildPasswordRequirements(),
+
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _confirmPassController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirmar nueva contraseña',
+                  prefixIcon: Icon(Icons.lock_reset),
+                ),
+                validator: (value) {
+                  if (_newPassController.text.isNotEmpty && value != _newPassController.text) {
+                    return 'Las contraseñas no coinciden';
+                  }
+                  return null;
+                },
+
+              ),
+              const SizedBox(height: 32),
+              if (_errorMessage != null)
+                Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _updateProfile,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : const Text('Guardar cambios'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
