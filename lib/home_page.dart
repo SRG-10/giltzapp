@@ -143,16 +143,6 @@ class _NewPasswordPageState extends State<NewPasswordPage> {
                           value: cat['id'] as int,
                           child: Text(cat['nombre']),
                         )),
-                    DropdownMenuItem<int>(
-                      value: -1,
-                      child: Row(
-                        children: const [
-                          Icon(Icons.add, size: 18),
-                          SizedBox(width: 8),
-                          Text('Agregar nueva categoría'),
-                        ],
-                      ),
-                    ),
                   ],
                   onChanged: (value) async {
                     if (value == -1) {
@@ -633,16 +623,6 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
                           value: cat['id'] as int,
                           child: Text(cat['nombre']),
                         )),
-                        DropdownMenuItem<int>(
-                          value: -1,
-                          child: Row(
-                            children: const [
-                              Icon(Icons.add, size: 18),
-                              SizedBox(width: 8),
-                              Text('Agregar nueva categoría'),
-                            ],
-                          ),
-                        ),
                       ],
                       onChanged: (value) async {
                         if (value == -1) {
@@ -1262,29 +1242,35 @@ String _getCategoryName(int? categoryId) {
                 },
 
               ),
-              ExpansionTile(
-                leading: const Icon(Icons.folder),
-                title: const Text('Categorías'),
-                childrenPadding: const EdgeInsets.only(left: 32),
-                children: _categories.isEmpty
-                    ? [
-                        const ListTile(
-                          title: Text('No hay categorías'),
-                          enabled: false,
-                        )
-                      ]
-                    : _categories.map((cat) => ListTile(
-                          leading: const Icon(Icons.label_outline),
-                          title: Text(cat['nombre'] ?? ''),
-                          selected: _selectedCategoryId == cat['id'],
-                          onTap: () {
-                            setState(() {
-                              _selectedCategoryId = cat['id'];
-                              Navigator.pop(context);
-                            });
-                          },
-                        )).toList(),
-              ),
+                ExpansionTile(
+                  leading: const Icon(Icons.folder),
+                  title: const Text('Categorías'),
+                  childrenPadding: const EdgeInsets.only(left: 32),
+                  children: _categories.isEmpty
+                      ? [
+                          const ListTile(
+                            title: Text('No hay categorías'),
+                            enabled: false,
+                          )
+                        ]
+                      : _categories.map((cat) => ListTile(
+                            leading: const Icon(Icons.label_outline),
+                            title: Text(cat['nombre'] ?? ''),
+                            selected: _selectedCategoryId == cat['id'],
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              tooltip: 'Eliminar categoría',
+                              onPressed: () => _deleteCategory(cat['id'] as int, cat['nombre']),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _selectedCategoryId = cat['id'];
+                                Navigator.pop(context);
+                              });
+                            },
+                          )).toList(),
+                ),
+
                 ListTile(
                   leading: const Icon(Icons.vpn_key),
                   title: const Text('Agregar contraseña'),
@@ -1706,6 +1692,61 @@ String _getCategoryName(int? categoryId) {
       }
     }
   }
+  
+  Future<void> _deleteCategory(int categoryId, String nombre) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar categoría'),
+        content: Text('¿Seguro que quieres eliminar la categoría "$nombre"? Las contraseñas asociadas quedarán sin categoría.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      // 1. Quitar la categoría de todos los sitios web asociados
+      await _supabase
+        .from('web_sites')
+        .update({'categoria_id': null})
+        .eq('categoria_id', categoryId);
+
+      // 2. Eliminar la categoría
+      await _supabase
+        .from('categories')
+        .delete()
+        .eq('id', categoryId);
+
+      await _loadCategories();
+      await _loadPasswords();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Categoría eliminada')),
+        );
+      }
+      // Si la categoría eliminada estaba seleccionada, resetea la selección
+      if (_selectedCategoryId == categoryId) {
+        setState(() => _selectedCategoryId = null);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al eliminar categoría: $e')),
+        );
+      }
+    }
+  }
+
 
   
 }
