@@ -1775,6 +1775,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool get _hasLower => _newPassController.text.contains(RegExp(r'[a-z]'));
   bool get _hasDigit => _newPassController.text.contains(RegExp(r'\d'));
   bool get _hasSpecial => _newPassController.text.contains(RegExp(r'''[ªº\\!"|@·#$~%€&¬/()=?'¡¿`^[\]*+´{}\-\_\.\:\,\;\<\>"]'''));
+  String? _currentPassError;
 
   Widget _buildPasswordRequirements() {
     if (_newPassController.text.isEmpty) return const SizedBox.shrink();
@@ -1870,11 +1871,30 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       // Actualizar contraseña si se proporcionó
       if (_newPassController.text.isNotEmpty) {
-        // Reautenticación
-        await supabase.auth.signInWithPassword(
-          email: user.email!,
-          password: _currentPassController.text,
-        );
+        try {
+          // Reautenticación
+          await supabase.auth.signInWithPassword(
+            email: user.email!,
+            password: _currentPassController.text,
+          );
+        } on AuthException catch (e) {
+          if (e.message.contains('Invalid login credentials')) {
+            setState(() {
+              _currentPassError = 'La contraseña actual es incorrecta';
+            });
+            // Opcional: Limpia el error después de un tiempo o al editar el campo
+            return;
+          } else {
+            setState(() {
+              _currentPassError = 'Error: ${e.message}';
+            });
+            return;
+          }
+        }
+        // Si pasa la autenticación, limpia el error
+        setState(() {
+          _currentPassError = null;
+        });
 
         // Actualizar contraseña
         await supabase.auth.updateUser(
@@ -1980,16 +2000,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
               TextFormField(
                 controller: _currentPassController,
                 obscureText: !_currentPassVisible,
+                onChanged: (_) {
+                  if (_currentPassError != null) {
+                    setState(() => _currentPassError = null);
+                  }
+                },
                 decoration: InputDecoration(
                   labelText: 'Contraseña actual',
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
-                    icon: Icon(_currentPassVisible 
-                      ? Icons.visibility_off 
-                      : Icons.visibility),
+                    icon: Icon(_currentPassVisible ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setState(() => _currentPassVisible = !_currentPassVisible),
                   ),
+                  errorText: _currentPassError,
+                  
                 ),
+                // Puedes dejar el validator vacío o solo para obligatorio
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Introduce tu contraseña actual';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
