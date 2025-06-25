@@ -1793,6 +1793,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _newPassVisible = false;
   bool _isLoading = false;
   String? _errorMessage;
+  // ignore: unused_field
   bool _passwordChanged = false;
   bool get _minLength => _newPassController.text.length >= 12;
   bool get _hasUpper => _newPassController.text.contains(RegExp(r'[A-Z]'));
