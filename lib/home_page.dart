@@ -22,12 +22,12 @@ class HomePage extends StatefulWidget {
 }
 
 class NewPasswordPage extends StatefulWidget {
-  final List<Map<String, dynamic>> categories;
+   final List<Map<String, dynamic>> Function() getCategories;
   final Future<int?> Function(BuildContext) addCategoryFromDialog;
 
   const NewPasswordPage({
     super.key,
-    required this.categories,
+    required this.getCategories,
     required this.addCategoryFromDialog,
   });
 
@@ -46,6 +46,7 @@ class _NewPasswordPageState extends State<NewPasswordPage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentCategories = widget.getCategories();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nueva contraseña'),
@@ -139,13 +140,24 @@ class _NewPasswordPageState extends State<NewPasswordPage> {
                       value: null,
                       child: Text('Sin categoría'),
                     ),
-                    ...widget.categories.map((cat) => DropdownMenuItem<int>(
-                          value: cat['id'] as int,
-                          child: Text(cat['nombre']),
-                        )),
+                    ...currentCategories.map((cat) => DropdownMenuItem<int>(
+                      value: cat['id'] as int,
+                      child: Text(cat['nombre']),
+                    )),
+                    DropdownMenuItem<int>(
+                      value: -1, // Valor especial para "nueva categoría"
+                      child: Row(
+                        children: const [
+                          Icon(Icons.add, size: 18),
+                          SizedBox(width: 8),
+                          Text('Agregar nueva categoría'),
+                        ],
+                      ),
+                    ),
                   ],
                   onChanged: (value) async {
                     if (value == -1) {
+                      // Llama al diálogo para crear categoría
                       final newCatId = await widget.addCategoryFromDialog(context);
                       if (newCatId != null) {
                         setState(() {
@@ -160,6 +172,7 @@ class _NewPasswordPageState extends State<NewPasswordPage> {
                   },
                   validator: (value) => null,
                 ),
+
                 const SizedBox(height: 32),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -357,7 +370,7 @@ Future<void> showPasswordGeneratorDialog(BuildContext context, TextEditingContro
 class EditPasswordPage extends StatefulWidget {
   final Map<String, dynamic> password;
   final Map<String, dynamic> webSite;
-  final List<Map<String, dynamic>> categories; // <-- Nuevo parámetro
+  final List<Map<String, dynamic>> Function() getCategories; // <-- Nuevo parámetro
   final Future<int?> Function(BuildContext) addCategoryFromDialog; // <-- Nuevo parámetro
 
   
@@ -365,7 +378,7 @@ class EditPasswordPage extends StatefulWidget {
     super.key,
     required this.password,
     required this.webSite,
-    required this.categories,
+    required this.getCategories,
     required this.addCategoryFromDialog, // <-- Nuevo parámetro
   });
 
@@ -508,6 +521,7 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentCategories = widget.getCategories();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar Contraseña'),
@@ -608,39 +622,49 @@ class _EditPasswordPageState extends State<EditPasswordPage> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<int>(
-                      value: selectedCategoryId,
-                      decoration: const InputDecoration(
-                        labelText: 'Categoría',
-                        prefixIcon: Icon(Icons.category),
-                        border: OutlineInputBorder(),
-                      ),
-                      items: [
-                        DropdownMenuItem<int>(
-                          value: null,
-                          child: Text('Sin categoría'),
-                        ),
-                        ...widget.categories.map((cat) => DropdownMenuItem<int>(
-                          value: cat['id'] as int,
-                          child: Text(cat['nombre']),
-                        )),
-                      ],
-                      onChanged: (value) async {
-                        if (value == -1) {
-                          final newCatId = await widget.addCategoryFromDialog(context);
-                          if (newCatId != null) {
-                            setState(() {
-                              selectedCategoryId = newCatId;
-                            });
-                          }
-                        } else {
-                          setState(() {
-                            selectedCategoryId = value;
-                          });
-                        }
-                      },
-                      validator: (value) => null,
+                  value: selectedCategoryId,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoría',
+                    prefixIcon: Icon(Icons.category),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem<int>(
+                      value: null,
+                      child: Text('Sin categoría'),
                     ),
-
+                    ...currentCategories.map((cat) => DropdownMenuItem<int>(
+                      value: cat['id'] as int,
+                      child: Text(cat['nombre']),
+                    )),
+                    DropdownMenuItem<int>(
+                      value: -1, // Valor especial para "nueva categoría"
+                      child: Row(
+                        children: const [
+                          Icon(Icons.add, size: 18),
+                          SizedBox(width: 8),
+                          Text('Agregar nueva categoría'),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) async {
+                    if (value == -1) {
+                      // Llama al diálogo para crear categoría
+                      final newCatId = await widget.addCategoryFromDialog(context);
+                      if (newCatId != null) {
+                        setState(() {
+                          selectedCategoryId = newCatId;
+                        });
+                      }
+                    } else {
+                      setState(() {
+                        selectedCategoryId = value;
+                      });
+                    }
+                  },
+                  validator: (value) => null,
+                ),
                     const SizedBox(height: 32),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -784,92 +808,92 @@ class _HomePageState extends State<HomePage> {
   // MÉTODO PARA AGREGAR CONTRASEÑA
   // MÉTODO PARA AGREGAR CONTRASEÑA CON FORMULARIO VALIDADO
   Future<void> _addPassword() async {
-  final user = _supabase.auth.currentUser;
-  if (user == null) return;
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
 
-  try {
-    final masterKey = await EncryptionService.currentMasterKey;
-    if (masterKey == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Sesión no válida')),
-        );
+    try {
+      final masterKey = await EncryptionService.currentMasterKey;
+      if (masterKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Sesión no válida')),
+          );
+        }
+        return;
       }
-      return;
-    }
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => NewPasswordPage(
-          categories: _categories,
-          addCategoryFromDialog: _addCategoryFromDialog,
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NewPasswordPage(
+            getCategories: () => _categories, // Función que devuelve la lista ACTUALIZADA
+            addCategoryFromDialog: _addCategoryFromDialog,
+          ),
         ),
-      ),
-    );
-
-    if (result != null)
-    {
-      final userResponse = await _supabase
-              .from('users')
-              .select('id')
-              .eq('auth_id', user.id)
-              .single();
-      final userId = userResponse['id'] as int;
-
-      final titulo = result['titulo'] as String;
-      final nombreUsuario = result['usuario'] as String;
-      final password = result['password'] as String;
-      final enlace = result['url'] as String;
-      final categoriaId = result['categoria_id'] as int?;
-
-      // Cifrar la contraseña
-      final encrypted = await EncryptionService.encryptPassword(
-        password,
-        masterKey,
       );
 
-       // Crear/actualizar sitio web
-      final webSiteResponse = await _supabase
-          .from('web_sites')
-          .upsert({
-            'usuario_id': userId,
-            'nombre_sitio': titulo,
-            'enlace': enlace,
-            'categoria_id': categoriaId,
-          }, onConflict: 'nombre_sitio,usuario_id')
-          .select('id')
-          .single();
+      if (result != null)
+      {
+        final userResponse = await _supabase
+                .from('users')
+                .select('id')
+                .eq('auth_id', user.id)
+                .single();
+        final userId = userResponse['id'] as int;
 
-      final sitioWebId = webSiteResponse['id'] as int;
+        final titulo = result['titulo'] as String;
+        final nombreUsuario = result['usuario'] as String;
+        final password = result['password'] as String;
+        final enlace = result['url'] as String;
+        final categoriaId = result['categoria_id'] as int?;
 
-      // Insertar contraseña cifrada
-      await _supabase.from('passwords').insert({
-        'sitio_web_id': sitioWebId,
-        'nombre_usuario': nombreUsuario,
-        'hash_contrasena': encrypted['hash_contrasena'],
-        'iv': encrypted['iv'],
-        'auth_tag': encrypted['auth_tag'],
-        'user_id': userId,
-      });
-
-      await _loadPasswords();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contraseña añadida')),
+        // Cifrar la contraseña
+        final encrypted = await EncryptionService.encryptPassword(
+          password,
+          masterKey,
         );
+
+        // Crear/actualizar sitio web
+        final webSiteResponse = await _supabase
+            .from('web_sites')
+            .upsert({
+              'usuario_id': userId,
+              'nombre_sitio': titulo,
+              'enlace': enlace,
+              'categoria_id': categoriaId,
+            }, onConflict: 'nombre_sitio,usuario_id')
+            .select('id')
+            .single();
+
+        final sitioWebId = webSiteResponse['id'] as int;
+
+        // Insertar contraseña cifrada
+        await _supabase.from('passwords').insert({
+          'sitio_web_id': sitioWebId,
+          'nombre_usuario': nombreUsuario,
+          'hash_contrasena': encrypted['hash_contrasena'],
+          'iv': encrypted['iv'],
+          'auth_tag': encrypted['auth_tag'],
+          'user_id': userId,
+        });
+
+        await _loadPasswords();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Contraseña añadida')),
+          );
+        }
+
       }
 
-    }
-
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
-}
 
 
 Future<int?> _addCategoryFromDialog(BuildContext context) async {
@@ -1454,7 +1478,7 @@ String _getCategoryName(int? categoryId) {
                                 builder: (context) => EditPasswordPage(
                                   password: password,
                                   webSite: webSite,
-                                  categories: _categories,
+                                  getCategories: () => _categories,
                                   addCategoryFromDialog: _addCategoryFromDialog,
                                 ),
                               ),
