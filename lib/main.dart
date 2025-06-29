@@ -620,7 +620,16 @@ String _normalizeBase64(String str) {
           .eq('auth_id', user.id)
           .single();
 
-      final int userIdBigInt = userData['id'] as int;  // ID BIGINT
+
+      final dynamic idData = userData['id'];
+      final int userIdBigInt;
+
+      if (idData is int) {
+        userIdBigInt = idData;
+      } else {
+        userIdBigInt = int.parse(idData.toString()); // Conversión segura
+      }
+
 
       Uint8List currentSalt;
       if (userData['salt'] == null) {
