@@ -252,6 +252,7 @@ class _AuthPageState extends State<AuthPage> {
         if (existing != null) {
           setState(() {
             _errorMessage = 'El correo electrónico o el nombre de usuario ya están en uso.';
+            _isLoading = false;
           });
           showDialog(
             // ignore: use_build_context_synchronously
@@ -273,11 +274,13 @@ class _AuthPageState extends State<AuthPage> {
         final response = await supabase.auth.signUp(
           email: _regEmailController.text,
           password: _regPasswordController.text,
-          emailRedirectTo: 'giltzapp.vercel.app', // Cambia esto por tu URL de redirección
+          emailRedirectTo: 'giltzapp.vercel.app',
           data: {
             'username': _usernameController.text,
           },
         );
+
+        // If signUp throws, it will be caught by the catch block below.
         if (response.user != null) {
           final salt = EncryptionService.generateSecureSalt();
           final masterKey = await EncryptionService.deriveMasterKey(_regPasswordController.text, salt);
@@ -289,11 +292,16 @@ class _AuthPageState extends State<AuthPage> {
             'hash_contrasena_maestra': base64Encode(masterKey.bytes),
             'salt': base64Encode(salt),
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta. También consulta la carpeta de spam.')),
-          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Registro exitoso. Revisa tu email para confirmar la cuenta. También consulta la carpeta de spam.')),
+            );
+          }
+          
           setState(() {
             _isLogin = true;
+            _isLoading = false;
           });
           // Solo limpiar los campos de registro, no los de login
           _regPasswordController.clear();
@@ -585,17 +593,28 @@ Future<void> _submitResetPassword() async {
   try {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser!;
+
+     if (user == null) {
+      throw Exception('Usuario no autenticado');
+    }
     
     // 1. Obtener clave actual antes del cambio
     final userData = await supabase
         .from('users')
         .select('salt, hash_contrasena_maestra')
         .eq('auth_id', user.id)
-        .single();
+        .maybeSingle();
 
-    if (userData['salt'] == null) {
-      throw Exception('Usuario no tiene salt registrado');
+    if (userData == null) {
+      throw Exception('Datos de usuario no encontrados');
     }
+
+    final dynamic saltData = userData['salt'];
+    if (saltData == null) {
+      throw Exception('Salt no encontrado en los datos del usuario');
+    }
+
+
 
     // Verificar formato base64
       try {
@@ -604,7 +623,7 @@ Future<void> _submitResetPassword() async {
         throw Exception('Formato de salt inválido');
       }
 
-    final currentSalt = Uint8List.fromList(userData['salt'] as List<int>);
+    final currentSalt = base64Decode(saltData as String);
     _currentMasterKey = await EncryptionService.deriveMasterKey(
       _passwordController.text, // Contraseña actual
       currentSalt,
@@ -1151,6 +1170,14 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   void _checkForPasswordReset() {
     final uri = Uri.base;
     if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+      try {
+        await Supabase.instance.client.auth.getSessionFromUrl();
+      } catch (e) {
+        // Maneja el error si no se pudo obtener la sesión
+        setState(() {
+          _resetError = 'Error al obtener la sesión de restablecimiento de contraseña';
+        });
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         setState(() {
           _showResetPassword = true;
