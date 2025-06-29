@@ -1316,6 +1316,7 @@ String _getCategoryName(int? categoryId) {
                   );
                   if (result == true) {
                     await _loadUsername(); // Vuelve a cargar el nombre de usuario actualizado
+                    await _loadPasswords();
                     setState(() {}); // Fuerza el rebuild si es necesario
                   }
                 },
