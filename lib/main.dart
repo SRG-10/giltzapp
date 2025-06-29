@@ -586,28 +586,15 @@ Widget _buildPasswordRequirementsReset() {
 
 
 
-bool _isValidBase64(String str) {
+bool isValidBase64(String str) {
   try {
-    // Limpiar espacios y caracteres de nueva línea
-    final cleanStr = str.trim().replaceAll(RegExp(r'\s'), '');
-    
-    // Verificar caracteres Base64 válidos
-    final base64Regex = RegExp(r'^[A-Za-z0-9+/]*={0,2}$');
-    if (!base64Regex.hasMatch(cleanStr)) {
-      return false;
-    }
-    
-    // Verificar longitud múltiplo de 4
-    if (cleanStr.length % 4 != 0) {
-      return false;
-    }
-    
-    base64Decode(cleanStr);
+    base64Decode(str);
     return true;
   } catch (_) {
     return false;
   }
 }
+
 
 String _normalizeBase64(String str) {
   String cleaned = str.trim().replaceAll(RegExp(r'\s'), '');
@@ -633,6 +620,14 @@ String _normalizeBase64(String str) {
           .eq('auth_id', user.id)
           .single();
 
+      Uint8List currentSalt;
+      if (userData['salt'] == null) {
+        currentSalt = EncryptionService.generateSecureSalt();
+        await supabase.from('users').update({'salt': base64Encode(currentSalt)});
+      } else {
+        currentSalt = base64Decode(userData['salt'] as String);
+      }
+
       if (userData['salt'] == null) {
         throw Exception('Usuario no tiene salt registrado');
       }
@@ -644,7 +639,7 @@ String _normalizeBase64(String str) {
           throw Exception('Formato de salt inválido');
         }
 
-      final currentSalt = Uint8List.fromList(userData['salt'] as List<int>);
+      //final currentSalt = Uint8List.fromList(userData['salt'] as List<int>);
       _currentMasterKey = await EncryptionService.deriveMasterKey(
         _passwordController.text, // Contraseña actual
         currentSalt,
