@@ -586,6 +586,14 @@ Widget _buildPasswordRequirementsReset() {
 
 
 
+bool _isValidBase64(String str) {
+  try {
+    base64Decode(str);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 
 
@@ -614,7 +622,16 @@ Future<void> _submitResetPassword() async {
       throw Exception('Salt no encontrado en los datos del usuario');
     }
 
-
+    Uint8List currentSalt;
+    if (saltData is String && _isValidBase64(saltData)) {
+      currentSalt = base64Decode(saltData);
+    } else {
+      // Generar nuevo salt si es inválido
+      currentSalt = EncryptionService.generateSecureSalt();
+      await supabase.from('users').update({
+        'salt': base64Encode(currentSalt),
+      }).eq('auth_id', user.id);
+    }
 
     // Verificar formato base64
       try {
@@ -623,7 +640,9 @@ Future<void> _submitResetPassword() async {
         throw Exception('Formato de salt inválido');
       }
 
-    final currentSalt = base64Decode(saltData as String);
+
+
+    //final currentSalt = base64Decode(saltData as String);
     _currentMasterKey = await EncryptionService.deriveMasterKey(
       _passwordController.text, // Contraseña actual
       currentSalt,
