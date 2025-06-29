@@ -588,19 +588,43 @@ Widget _buildPasswordRequirementsReset() {
 
 bool _isValidBase64(String str) {
   try {
-    base64Decode(str);
+    // Limpiar espacios y caracteres de nueva línea
+    final cleanStr = str.trim().replaceAll(RegExp(r'\s'), '');
+    
+    // Verificar caracteres Base64 válidos
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/]*={0,2}$');
+    if (!base64Regex.hasMatch(cleanStr)) {
+      return false;
+    }
+    
+    // Verificar longitud múltiplo de 4
+    if (cleanStr.length % 4 != 0) {
+      return false;
+    }
+    
+    base64Decode(cleanStr);
     return true;
   } catch (_) {
     return false;
   }
 }
 
+String _normalizeBase64(String str) {
+  String cleaned = str.trim().replaceAll(RegExp(r'\s'), '');
+  
+  // Agregar padding si es necesario
+  while (cleaned.length % 4 != 0) {
+    cleaned += '=';
+  }
+  
+  return cleaned;
+}
 
 
 Future<void> _submitResetPassword() async {
   try {
     final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser!;
+    final user = supabase.auth.currentUser;
 
      if (user == null) {
       throw Exception('Usuario no autenticado');
@@ -623,32 +647,23 @@ Future<void> _submitResetPassword() async {
     }
 
     Uint8List currentSalt;
-    if (saltData is String && _isValidBase64(saltData)) {
-      currentSalt = base64Decode(saltData);
+    String saltString = saltData.toString();
+
+    if (_isValidBase64(saltString)) {
+      // Salt válido
+      currentSalt = base64Decode(_normalizeBase64(saltString));
     } else {
-      // Generar nuevo salt si es inválido
+      // Salt inválido - generar uno nuevo
+      print('Salt inválido detectado, generando nuevo salt');
       currentSalt = EncryptionService.generateSecureSalt();
+      
+      // Actualizar en la base de datos
       await supabase.from('users').update({
         'salt': base64Encode(currentSalt),
       }).eq('auth_id', user.id);
     }
 
-    // Verificar formato base64
-      try {
-        base64Decode(userData['salt'] as String);
-      } catch (e) {
-        throw Exception('Formato de salt inválido');
-      }
-
-
-
-    //final currentSalt = base64Decode(saltData as String);
-    _currentMasterKey = await EncryptionService.deriveMasterKey(
-      _passwordController.text, // Contraseña actual
-      currentSalt,
-    );
-
-    // 2. Generar nuevos componentes de seguridad
+    // Continúa con el resto de la lógica...
     final newSalt = EncryptionService.generateSecureSalt();
     final newMasterKey = await EncryptionService.deriveMasterKey(
       _newPasswordController.text,
