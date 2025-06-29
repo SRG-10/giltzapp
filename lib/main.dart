@@ -12,6 +12,9 @@ import 'package:encrypt/encrypt.dart' as encrypt;
 import 'encryption_service.dart';
 import 'dart:typed_data';
 
+// web_utils_web.dart
+import 'dart:html' as html;
+
 import 'web_utils.dart'
     if (dart.library.html) 'web_utils_web.dart';
 
@@ -22,6 +25,10 @@ import 'web_utils.dart'
 // Place this at the top of the file, after other imports
 // ignore: uri_does_not_exist, deprecated_member_use
 
+void clearWebUrl() {
+  html.window.location.href = html.window.location.origin;
+}
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +36,7 @@ void main() async {
     url: 'https://abioxiwzcrsemxllqznq.supabase.co',        
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiaW94aXd6Y3JzZW14bGxxem5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNDAzOTgsImV4cCI6MjA2NDgxNjM5OH0.1xFPpUgEOJZPHnpbYm4GyQvjzCqptIcOO1dGEausiz8',
     authOptions: FlutterAuthClientOptions(
-      authFlowType: AuthFlowType.pkce, // Usa PKCE para mayor seguridad
+      authFlowType: kIsWeb ? AuthFlowType.implicit : AuthFlowType.pkce,
     )
   );
   runApp(const MyApp());
@@ -698,26 +705,18 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
 } 
 
   void _redirectToLogin() async {
-  // 1. Cierra la sesión PKCE generada por el enlace de recuperación
-  await Supabase.instance.client.auth.signOut(); 
-  
-  // 2. Limpia el estado del formulario
-  setState(() {
-    _showResetPassword = false;
-    _resetError = null;
-    _newPasswordController.clear();
-    _confirmPasswordController.clear();
-    _isLogin = true;
-  });
-
-  if (kIsWeb) {
-    clearWebUrl(); // Esto solo hará algo en web, en móvil no hace nada.
-  }
+    await Supabase.instance.client.auth.signOut();
+    if (kIsWeb) clearWebUrl(); // Limpia la URL en web
     
-  
-  // 4. Redirige al login y elimina el historial de navegación
-  Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-}
+    setState(() {
+      _showResetPassword = false;
+      _resetError = null;
+      _isLogin = true;
+    });
+    
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+  }
+
 
 
   final RegExp emailRegex = RegExp(r'^[^@]+@[^@]+\.[a-zA-Z]{2,3}$');
@@ -1169,23 +1168,26 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   String? _resetError;
 
   Future<void> _checkForPasswordReset() async {
-  final uri = Uri.base;
-  if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
-    try {
-      await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
-      
-      // Verifica si la sesión se restauró correctamente
-      if (Supabase.instance.client.auth.currentUser == null) {
-        setState(() => _resetError = 'Error al restaurar la sesión');
-        return;
+    final uri = Uri.base;
+    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+      try {
+        // Forzar recarga en web para limpiar el estado
+        if (kIsWeb) html.window.location.reload();
+        
+        await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
+        
+        if (Supabase.instance.client.auth.currentUser == null) {
+          setState(() => _resetError = 'Error al restaurar la sesión');
+          return;
+        }
+        setState(() => _showResetPassword = true);
+      } catch (e) {
+        setState(() => _resetError = 'Error: ${e.toString()}');
       }
-
-      setState(() => _showResetPassword = true);
-    } catch (e) {
-      setState(() => _resetError = 'Error: ${e.toString()}');
     }
   }
-}
+
+
 
 
 }
