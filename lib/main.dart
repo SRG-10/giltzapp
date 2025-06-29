@@ -1167,11 +1167,11 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   String? _resetCode;
   String? _resetError;
 
-  void _checkForPasswordReset() {
+  Future<void> _checkForPasswordReset() async {
     final uri = Uri.base;
     if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
       try {
-        await Supabase.instance.client.auth.getSessionFromUrl();
+        await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
       } catch (e) {
         // Maneja el error si no se pudo obtener la sesión
         setState(() {
