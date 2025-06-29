@@ -620,6 +620,8 @@ String _normalizeBase64(String str) {
           .eq('auth_id', user.id)
           .single();
 
+      final int userIdBigInt = userData['id'] as int;  // ID BIGINT
+
       Uint8List currentSalt;
       if (userData['salt'] == null) {
         currentSalt = EncryptionService.generateSecureSalt();
@@ -662,7 +664,7 @@ String _normalizeBase64(String str) {
 
       // 4. Migrar contraseñas con ambas claves
       await _migratePasswords(
-        userId: user.id,
+        userId: userIdBigInt,
         oldKey: _currentMasterKey!,
         newKey: newMasterKey,
       );
@@ -679,7 +681,7 @@ String _normalizeBase64(String str) {
     }
   }
 
-  Future<void> _migratePasswords({required String userId, required encrypt.Key oldKey, required encrypt.Key newKey,}) async {
+  Future<void> _migratePasswords({required int userId, required encrypt.Key oldKey, required encrypt.Key newKey,}) async {
 
     final supabase = Supabase.instance.client;
     
