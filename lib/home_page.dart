@@ -1128,7 +1128,7 @@ Future<int?> _addCategoryFromDialog(BuildContext context) async {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Por seguridad, no se permite ver ni copiar contraseñas en web, use la extensión.'),
+            content: Text('Por seguridad, no se permite ver ni copiar contraseñas en web.'),
             duration: Duration(seconds: 4),
           ),
         );
