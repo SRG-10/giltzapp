@@ -592,10 +592,11 @@ Widget _buildPasswordRequirementsReset() {
 Future<void> _submitResetPassword() async {
   try {
     final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser!;
+    final user = supabase.auth.currentUser;
 
-     if (user == null) {
-      throw Exception('Usuario no autenticado');
+     if (user == null) { // Verifica explícitamente si es nulo
+      setState(() => _resetError = 'Sesión inválida. Vuelve a solicitar el restablecimiento.');
+      return;
     }
     
     // 1. Obtener clave actual antes del cambio
@@ -1168,23 +1169,23 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   String? _resetError;
 
   Future<void> _checkForPasswordReset() async {
-    final uri = Uri.base;
-    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
-      try {
-        await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
-      } catch (e) {
-        // Maneja el error si no se pudo obtener la sesión
-        setState(() {
-          _resetError = 'Error al obtener la sesión de restablecimiento de contraseña';
-        });
+  final uri = Uri.base;
+  if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+    try {
+      await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
+      
+      // Verifica si la sesión se restauró correctamente
+      if (Supabase.instance.client.auth.currentUser == null) {
+        setState(() => _resetError = 'Error al restaurar la sesión');
+        return;
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() {
-          _showResetPassword = true;
-          _resetCode = uri.queryParameters['code'];
-        });
-      });
+
+      setState(() => _showResetPassword = true);
+    } catch (e) {
+      setState(() => _resetError = 'Error: ${e.toString()}');
     }
   }
+}
+
 
 }
