@@ -1148,25 +1148,25 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
 
   Future<void> _checkForPasswordReset() async {
     final uri = Uri.base;
-    if (uri.path == '/reset-password') {
+    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
       try {
-        // Forza recarga en web para limpiar estado
+        // Forzar recarga solo si es web
         if (kIsWeb) html.window.location.reload();
         
-        // Procesa la sesión
         await Supabase.instance.client.auth.getSessionFromUrl(uri);
         
-        // Verifica sesión
+        // Verificar sesión
         if (Supabase.instance.client.auth.currentUser == null) {
-          throw Exception('Sesión inválida');
+          setState(() => _resetError = 'Error al restaurar la sesión');
+          return;
         }
-        
         setState(() => _showResetPassword = true);
       } catch (e) {
         setState(() => _resetError = 'Error: ${e.toString()}');
       }
     }
   }
+
 
 
 
