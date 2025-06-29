@@ -624,80 +624,79 @@ String _normalizeBase64(String str) {
   Future<void> _submitResetPassword() async {
     try {
       final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-
-      if (user == null) throw Exception('Usuario no autenticado');
-
-      // 1. Obtener clave anterior
+      final user = supabase.auth.currentUser!;
+      
+      // 1. Obtener clave actual antes del cambio
       final userData = await supabase
           .from('users')
-          .select('hash_contrasena_maestra, salt')
+          .select('salt, hash_contrasena_maestra')
           .eq('auth_id', user.id)
           .single();
 
-      final dynamic idData = userData['id'];
-      final int userIdBigInt = (idData is int) ? idData : int.parse(idData.toString());
+      if (userData['salt'] == null) {
+        throw Exception('Usuario no tiene salt registrado');
+      }
 
+      // Verificar formato base64
+        try {
+          base64Decode(userData['salt'] as String);
+        } catch (e) {
+          throw Exception('Formato de salt inválido');
+        }
 
-      final Uint8List oldSalt = base64Decode(userData['salt'] as String);
-      final encrypt.Key oldKey = encrypt.Key.fromBase64(userData['hash_contrasena_maestra'] as String);
+      final currentSalt = Uint8List.fromList(userData['salt'] as List<int>);
+      _currentMasterKey = await EncryptionService.deriveMasterKey(
+        _passwordController.text, // Contraseña actual
+        currentSalt,
+      );
 
-      // 2. Generar nueva clave
+      // 2. Generar nuevos componentes de seguridad
       final newSalt = EncryptionService.generateSecureSalt();
-      final newKey = await EncryptionService.deriveMasterKey(
+      final newMasterKey = await EncryptionService.deriveMasterKey(
         _newPasswordController.text,
         newSalt,
       );
 
-      // 3. Migrar contraseñas
-      await _migratePasswords(
-        userId: user.id,
-        oldKey: oldKey,
-        newKey: newKey,
-      );
-
-      // 4. Actualizar credenciales
+      // 3. Actualizar en transacción
       await supabase.rpc('update_user_credentials', params: {
         'user_id': user.id,
         'new_password': _newPasswordController.text,
-        'new_hash': base64Encode(newKey.bytes),
+        'new_hash': base64Encode(newMasterKey.bytes),
         'new_salt': base64Encode(newSalt),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contraseña y datos migrados correctamente')),
+      // 4. Migrar contraseñas con ambas claves
+      await _migratePasswords(
+        userId: user.id,
+        oldKey: _currentMasterKey!,
+        newKey: newMasterKey,
       );
 
-      _redirectToLogin();
+      // 5. Limpiar clave anterior
+      _currentMasterKey = null;
+
+    } on PostgrestException catch (e) {
+      setState(() => _resetError = 'Error de base de datos: ${e.message}');
     } catch (e) {
-      setState(() => _resetError = 'Error: ${e.toString()}');
+      setState(() => _resetError = 'Error inesperado: ${e.toString()}');
     } finally {
       setState(() => _resetLoading = false);
     }
   }
 
+  Future<void> _migratePasswords({required String userId, required encrypt.Key oldKey, required encrypt.Key newKey,}) async {
 
-  Future<void> _migratePasswords({
-    required String userId,
-    required encrypt.Key oldKey,
-    required encrypt.Key newKey,
-  }) async {
     final supabase = Supabase.instance.client;
-
-    final userRecord = await supabase
-      .from('users')
-      .select('id')
-      .eq('auth_id', userId)
-      .single();
-
-  final int userIdBigInt = userRecord['id'] as int;
-
+    
     final passwords = await supabase
         .from('passwords')
         .select()
-        .eq('user_id', userIdBigInt);
+        .eq('user_id', userId);
 
     for (final pwd in passwords) {
+
+      if (pwd['hash_contrasena'] == null || pwd['iv'] == null || pwd['auth_tag'] == null) continue;
+
       // Descifrar con clave antigua
       final decrypted = await EncryptionService.decryptPassword(
         hashContrasena: pwd['hash_contrasena'] as String,
@@ -709,14 +708,15 @@ String _normalizeBase64(String str) {
       // Cifrar con nueva clave
       final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
       
-      // Actualizar en base de datos
+      // Actualizar con todos los campos requeridos
       await supabase.from('passwords').update({
         'hash_contrasena': encrypted['hash_contrasena'],
         'iv': encrypted['iv'],
         'auth_tag': encrypted['auth_tag'],
       }).eq('id', pwd['id']);
     }
-  }
+  } 
+
 
 
   void _redirectToLogin() async {
