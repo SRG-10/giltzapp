@@ -635,7 +635,9 @@ String _normalizeBase64(String str) {
           .eq('auth_id', user.id)
           .single();
 
-          final int userIdBigInt = userData['id'] as int;  // ID BIGINT
+      final dynamic idData = userData['id'];
+      final int userIdBigInt = (idData is int) ? idData : int.parse(idData.toString());
+
 
       final Uint8List oldSalt = base64Decode(userData['salt'] as String);
       final encrypt.Key oldKey = encrypt.Key.fromBase64(userData['hash_contrasena_maestra'] as String);
