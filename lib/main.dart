@@ -656,7 +656,7 @@ String _normalizeBase64(String str) {
 
       // 4. Actualizar credenciales
       await supabase.rpc('update_user_credentials', params: {
-        'user_id': userIdBigInt,
+        'user_id': user.id,
         'new_password': _newPasswordController.text,
         'new_hash': base64Encode(newKey.bytes),
         'new_salt': base64Encode(newSalt),
@@ -681,10 +681,19 @@ String _normalizeBase64(String str) {
     required encrypt.Key newKey,
   }) async {
     final supabase = Supabase.instance.client;
+
+    final userRecord = await supabase
+      .from('users')
+      .select('id')
+      .eq('auth_id', userId)
+      .single();
+
+  final int userIdBigInt = userRecord['id'] as int;
+
     final passwords = await supabase
         .from('passwords')
         .select()
-        .eq('user_id', userId);
+        .eq('user_id', userIdBigInt);
 
     for (final pwd in passwords) {
       // Descifrar con clave antigua
