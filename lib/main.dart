@@ -933,42 +933,21 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
 
 
   Future<void> _sendPasswordResetEmailAndShowSuccess(String email) async {
-    setState(() => _isLoading = true);
-    try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.resetPasswordForEmail(
-        email,
-        redirectTo: 'https://giltzapp.vercel.app/reset-password', // Tu URL de recuperación
-      );
-      // Muestra mensaje de éxito tipo registro y vuelve al login
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Correo enviado. Revisa tu correo para restablecer la contraseña. También consulta la carpeta de spam.'),
-          duration: Duration(seconds: 5),
-        ),
-      );
-      if (!_isLogin) {
-        setState(() {
-          _isLogin = true; // Cambia a la pantalla de login
-        });
-      }
-    } on AuthException catch (error) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Error'),
-          content: Text(error.message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
+    final supabase = Supabase.instance.client;
+    
+    // 1. Verifica si el correo existe usando una función segura
+    final userExists = await supabase.rpc('user_exists', params: {'user_email': email});
+    
+    if (userExists == false) {
+      setState(() => _errorMessage = 'Correo no registrado');
+      return;
     }
+
+    // 2. Envía el correo de recuperación
+    await supabase.auth.resetPasswordForEmail(
+      email,
+      redirectTo: 'https://giltzapp.vercel.app/reset-password',
+    );
   }
 
 
@@ -1169,23 +1148,26 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
 
   Future<void> _checkForPasswordReset() async {
     final uri = Uri.base;
-    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
+    if (uri.path == '/reset-password') {
       try {
-        // Forzar recarga en web para limpiar el estado
+        // Forza recarga en web para limpiar estado
         if (kIsWeb) html.window.location.reload();
         
-        await Supabase.instance.client.auth.getSessionFromUrl(Uri.base);
+        // Procesa la sesión
+        await Supabase.instance.client.auth.getSessionFromUrl(uri);
         
+        // Verifica sesión
         if (Supabase.instance.client.auth.currentUser == null) {
-          setState(() => _resetError = 'Error al restaurar la sesión');
-          return;
+          throw Exception('Sesión inválida');
         }
+        
         setState(() => _showResetPassword = true);
       } catch (e) {
         setState(() => _resetError = 'Error: ${e.toString()}');
       }
     }
   }
+
 
 
 
