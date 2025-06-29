@@ -684,7 +684,7 @@ String _normalizeBase64(String str) {
     } on PostgrestException catch (e) {
       setState(() => _resetError = 'Error de base de datos: ${e.message}');
     } catch (e) {
-      setState(() => _resetError = 'Error inesperado: ${e.toString()}');
+      setState(() => _resetError = 'Error inesperado X: ${e.toString()}');
     } finally {
       setState(() => _resetLoading = false);
     }
