@@ -30,6 +30,8 @@ void clearWebUrl() {
 }
 
 
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
@@ -85,13 +87,21 @@ class MyApp extends StatelessWidget{
       ),
 
       onGenerateRoute: (settings) {
-        // Maneja rutas no definidas (opcional)
-        return MaterialPageRoute(
-          builder: (context) => const Scaffold(
-            body: Center(child: Text('Página no encontrada')),
-          ),
-        );
-      },
+    // Maneja la ruta de restablecimiento de contraseña
+    if (settings.name == '/reset-password') {
+      return MaterialPageRoute(
+        builder: (_) => AuthPage(showResetPassword: true),
+        settings: settings,
+      );
+    }
+    
+    // Para otras rutas no definidas
+    return MaterialPageRoute(
+      builder: (_) => const Scaffold(
+        body: Center(child: Text('Página no encontrada')),
+      ),
+    );
+  },
     );
   }
 }
@@ -100,7 +110,9 @@ class MyApp extends StatelessWidget{
 
 
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+  final bool showResetPassword;
+
+  const AuthPage({super.key, this.showResetPassword = false});
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -1123,10 +1135,15 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   // ignore: unused_field
   bool _isPasswordRecovery = false;
 
+  
+
   @override
   void initState() {
     // Aquí puedes inicializar cualquier cosa que necesites antes de que el widget se construya
     super.initState();
+    if (widget.showResetPassword) {
+      _showResetPassword = true;
+    }
     _checkForPasswordReset();
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
@@ -1147,25 +1164,25 @@ Future<void> _migratePasswords({required String userId, required encrypt.Key old
   String? _resetError;
 
   Future<void> _checkForPasswordReset() async {
-    final uri = Uri.base;
-    if (uri.path == '/reset-password' && uri.queryParameters['code'] != null) {
-      try {
-        // Forzar recarga solo si es web
-        if (kIsWeb) html.window.location.reload();
-        
-        await Supabase.instance.client.auth.getSessionFromUrl(uri);
-        
-        // Verificar sesión
-        if (Supabase.instance.client.auth.currentUser == null) {
-          setState(() => _resetError = 'Error al restaurar la sesión');
-          return;
-        }
-        setState(() => _showResetPassword = true);
-      } catch (e) {
-        setState(() => _resetError = 'Error: ${e.toString()}');
+  final uri = Uri.base;
+  if (uri.path == '/reset-password') {
+    try {
+      if (kIsWeb) html.window.location.reload();
+      
+      await Supabase.instance.client.auth.getSessionFromUrl(uri);
+      
+      if (Supabase.instance.client.auth.currentUser == null) {
+        setState(() => _resetError = 'Error al restaurar la sesión');
+        return;
       }
+      
+      setState(() => _showResetPassword = true);
+    } catch (e) {
+      setState(() => _resetError = 'Error: ${e.toString()}');
     }
   }
+}
+
 
 
 
