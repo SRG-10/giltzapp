@@ -621,114 +621,90 @@ String _normalizeBase64(String str) {
 }
 
 
-Future<void> _submitResetPassword() async {
-  try {
+  Future<void> _submitResetPassword() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) throw Exception('Usuario no autenticado');
+
+      // 1. Obtener clave anterior
+      final userData = await supabase
+          .from('users')
+          .select('hash_contrasena_maestra, salt')
+          .eq('auth_id', user.id)
+          .single();
+
+      final Uint8List oldSalt = base64Decode(userData['salt'] as String);
+      final encrypt.Key oldKey = encrypt.Key.fromBase64(userData['hash_contrasena_maestra'] as String);
+
+      // 2. Generar nueva clave
+      final newSalt = EncryptionService.generateSecureSalt();
+      final newKey = await EncryptionService.deriveMasterKey(
+        _newPasswordController.text,
+        newSalt,
+      );
+
+      // 3. Migrar contraseñas
+      await _migratePasswords(
+        userId: user.id,
+        oldKey: oldKey,
+        newKey: newKey,
+      );
+
+      // 4. Actualizar credenciales
+      await supabase.rpc('update_user_credentials', params: {
+        'user_id': user.id,
+        'new_password': _newPasswordController.text,
+        'new_hash': base64Encode(newKey.bytes),
+        'new_salt': base64Encode(newSalt),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña y datos migrados correctamente')),
+      );
+
+      _redirectToLogin();
+    } catch (e) {
+      setState(() => _resetError = 'Error: ${e.toString()}');
+    } finally {
+      setState(() => _resetLoading = false);
+    }
+  }
+
+
+  Future<void> _migratePasswords({
+    required String userId,
+    required encrypt.Key oldKey,
+    required encrypt.Key newKey,
+  }) async {
     final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
+    final passwords = await supabase
+        .from('passwords')
+        .select()
+        .eq('user_id', userId);
 
-     if (user == null) {
-      throw Exception('Usuario no autenticado');
-    }
-    
-    // 1. Obtener clave actual antes del cambio
-    final userData = await supabase
-        .from('users')
-        .select('salt, hash_contrasena_maestra')
-        .eq('auth_id', user.id)
-        .maybeSingle();
-
-    if (userData == null) {
-      throw Exception('Datos de usuario no encontrados');
-    }
-
-    final dynamic saltData = userData['salt'];
-    if (saltData == null) {
-      throw Exception('Salt no encontrado en los datos del usuario');
-    }
-
-    Uint8List currentSalt;
-    String saltString = saltData.toString();
-
-    if (_isValidBase64(saltString)) {
-      // Salt válido
-      currentSalt = base64Decode(_normalizeBase64(saltString));
-    } else {
-      // Salt inválido - generar uno nuevo
-      print('Salt inválido detectado, generando nuevo salt');
-      currentSalt = EncryptionService.generateSecureSalt();
+    for (final pwd in passwords) {
+      // Descifrar con clave antigua
+      final decrypted = await EncryptionService.decryptPassword(
+        hashContrasena: pwd['hash_contrasena'] as String,
+        ivBytes: pwd['iv'] as String,
+        authTag: pwd['auth_tag'] as String,
+        key: oldKey,
+      );
       
-      // Actualizar en la base de datos
-      await supabase.from('users').update({
-        'salt': base64Encode(currentSalt),
-      }).eq('auth_id', user.id);
+      // Cifrar con nueva clave
+      final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
+      
+      // Actualizar en base de datos
+      await supabase.from('passwords').update({
+        'hash_contrasena': encrypted['hash_contrasena'],
+        'iv': encrypted['iv'],
+        'auth_tag': encrypted['auth_tag'],
+      }).eq('id', pwd['id']);
     }
-
-    // Continúa con el resto de la lógica...
-    final newSalt = EncryptionService.generateSecureSalt();
-    final newMasterKey = await EncryptionService.deriveMasterKey(
-      _newPasswordController.text,
-      newSalt,
-    );
-
-    // 3. Actualizar en transacción
-    await supabase.rpc('update_user_credentials', params: {
-      'user_id': user.id,
-      'new_password': _newPasswordController.text,
-      'new_hash': base64Encode(newMasterKey.bytes),
-      'new_salt': base64Encode(newSalt),
-    });
-
-    // 4. Migrar contraseñas con ambas claves
-    await _migratePasswords(
-      userId: user.id,
-      oldKey: _currentMasterKey!,
-      newKey: newMasterKey,
-    );
-
-    // 5. Limpiar clave anterior
-    _currentMasterKey = null;
-
-  } on PostgrestException catch (e) {
-    setState(() => _resetError = 'Error de base de datos: ${e.message}');
-  } catch (e) {
-    setState(() => _resetError = 'Error inesperado: ${e.toString()}');
-  } finally {
-    setState(() => _resetLoading = false);
   }
-}
 
-Future<void> _migratePasswords({required String userId, required encrypt.Key oldKey, required encrypt.Key newKey,}) async {
-
-  final supabase = Supabase.instance.client;
-  
-  final passwords = await supabase
-      .from('passwords')
-      .select()
-      .eq('user_id', userId);
-
-  for (final pwd in passwords) {
-
-    if (pwd['hash_contrasena'] == null || pwd['iv'] == null || pwd['auth_tag'] == null) continue;
-
-    // Descifrar con clave antigua
-    final decrypted = await EncryptionService.decryptPassword(
-      hashContrasena: pwd['hash_contrasena'] as String,
-      ivBytes: pwd['iv'] as String,
-      authTag: pwd['auth_tag'] as String,
-      key: oldKey,
-    );
-    
-    // Cifrar con nueva clave
-    final encrypted = await EncryptionService.encryptPassword(decrypted, newKey);
-    
-    // Actualizar con todos los campos requeridos
-    await supabase.from('passwords').update({
-      'hash_contrasena': encrypted['hash_contrasena'],
-      'iv': encrypted['iv'],
-      'auth_tag': encrypted['auth_tag'],
-    }).eq('id', pwd['id']);
-  }
-} 
 
   void _redirectToLogin() async {
   // 1. Cierra la sesión PKCE generada por el enlace de recuperación
