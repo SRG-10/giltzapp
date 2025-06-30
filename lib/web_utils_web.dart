@@ -2,8 +2,8 @@ import 'dart:html' as web;
 
 void clearWebUrl() {
   final uri = Uri.parse(web.window.location.href);
-  final newUrl = uri.replace(path: '/', query: '').toString();
-  web.window.history.replaceState(null, '', newUrl);
+  final nuevaUrl = uri.replace(path: '/', query: '').toString();
+  web.window.history.replaceState(null, '', nuevaUrl);
 }
 
 bool isMobileWeb() {

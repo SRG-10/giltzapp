@@ -9,88 +9,84 @@ import 'dart:math';
 
 class EncryptionService {
 
-  static final _secureStorage = FlutterSecureStorage();
-  static encrypt.Key? _currentMasterKey;
+  static final almacenamientoSeguro = FlutterSecureStorage();
+  static encrypt.Key? _masterKeyActual;
 
   static Future<void> initialize(encrypt.Key key) async {
-  try {
-    _currentMasterKey = key;
-    final keyBase64 = base64Encode(key.bytes);
-    await _secureStorage.write(
-      key: 'master_key',
-      value: keyBase64,
-      webOptions: const WebOptions(
-        // public: false, // Removed invalid parameter
-      ), // Especifica para web
-    );
-  } catch (e) {
-    print('Error guardando clave: $e');
+    try {
+      _masterKeyActual = key;
+      final keyBase64 = base64Encode(key.bytes);
+      await almacenamientoSeguro.write(
+        key: 'master_key',
+        value: keyBase64,
+        webOptions: const WebOptions(
+        ), 
+      );
+    } catch (e) {
+      print('Error guardando clave: $e');
+    }
   }
-}
 
-
-  static Future<encrypt.Key?> get currentMasterKey async {
-    if (_currentMasterKey != null) return _currentMasterKey;
+  static Future<encrypt.Key?> get masterKeyActual async {
+    if (_masterKeyActual != null) return _masterKeyActual;
     
-    final keyString = await _secureStorage.read(key: 'master_key');
+    final keyString = await almacenamientoSeguro.read(key: 'master_key');
     if (keyString != null) {
       return encrypt.Key(base64Decode(keyString));
     }
     return null;
   }
 
-  static Future<void> clear() async {
-    _currentMasterKey = null;
-    await _secureStorage.delete(key: 'master_key');
+  static Future<void> limpiar() async {
+    _masterKeyActual = null;
+    await almacenamientoSeguro.delete(key: 'master_key');
   }
 
-  static Future<encrypt.Key> deriveMasterKey(String password, Uint8List salt) async {
+  static Future<encrypt.Key> derivarMasterKey(String password, Uint8List salt) async {
     final pbkdf2 = Pbkdf2(
       iterations: 310000,
       macAlgorithm: Hmac.sha256(),
       bits: 256,
     );
 
-    final secretKey = await pbkdf2.deriveKey(
+    final keySecreto = await pbkdf2.deriveKey(
       secretKey: SecretKey(utf8.encode(password)),
       nonce: salt,
     );
 
-    return encrypt.Key(Uint8List.fromList(await secretKey.extractBytes()));
+    return encrypt.Key(Uint8List.fromList(await keySecreto.extractBytes()));
   }
 
-  
-
-  static Uint8List generateSecureSalt([int length = 32]) {
-      final rand = Random.secure();
-      return Uint8List.fromList(List.generate(length, (_) => rand.nextInt(256)));
-    }
+  static Uint8List generarSaltSeguro([int length = 32]) {
+    final random = Random.secure();
+    return Uint8List.fromList(List.generate(length, (_) => random.nextInt(256)));
+  }
 
   // Cifrado AES-CBC con HMAC-SHA256
-  static Future<Map<String, String>> encryptPassword(String plainText, encrypt.Key key) async {
-    final encrypter = encrypt.Encrypter(
+  static Future<Map<String, String>> cifrarPassword(String textoPlano, encrypt.Key key) async {
+    final cifrar = encrypt.Encrypter(
       encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: 'PKCS7'),
     );
 
     final iv = encrypt.IV.fromSecureRandom(16);
-    final encrypted = encrypter.encrypt(plainText, iv: iv);
+    final cifrado = cifrar.encrypt(textoPlano, iv: iv);
 
     // Generar HMAC
     final hmac = Hmac.sha256();
     final hmacMac = await hmac.calculateMac(
-      encrypted.bytes + iv.bytes,
+      cifrado.bytes + iv.bytes,
       secretKey: SecretKey(key.bytes),
     );
 
     return {
-      'hash_contrasena': base64Encode(encrypted.bytes),
+      'hash_contrasena': base64Encode(cifrado.bytes),
       'iv': base64Encode(iv.bytes),
       'auth_tag': base64Encode(hmacMac.bytes),
     };
   }
 
   // Descifrado con verificación de integridad
-  static Future<String> decryptPassword({
+  static Future<String> descifrarPassword({
     required String hashContrasena,
     required String ivBytes,
     required String authTag,
@@ -107,7 +103,7 @@ class EncryptionService {
         secretKey: SecretKey(key.bytes),
       );
 
-      if (!constantTimeCompare(
+      if (!compararConsTiempo(
         base64Decode(authTag),
         calculatedHmac.bytes,
       )) {
@@ -133,13 +129,13 @@ class EncryptionService {
   }
 
   // Comparación segura en tiempo constante
-  static bool constantTimeCompare(List<int> a, List<int> b) {
+  static bool compararConsTiempo(List<int> a, List<int> b) {
     if (a.length != b.length) return false;
-    int result = 0;
+    int resultado = 0;
     for (int i = 0; i < a.length; i++) {
-      result |= a[i] ^ b[i];
+      resultado |= a[i] ^ b[i];
     }
-    return result == 0;
+    return resultado == 0;
   }
 }
 
@@ -153,49 +149,48 @@ Future<void> main() async {
   );
 
   final supabase = Supabase.instance.client;
-  final user = supabase.auth.currentUser!;
+  final usuario = supabase.auth.currentUser!;
 
   // Obtener salt del usuario
   final userData = await supabase
       .from('users')
       .select('salt')
-      .eq('auth_id', user.id)
+      .eq('auth_id', usuario.id)
       .single();
 
   // Derivar clave maestra
-  final masterKey = await EncryptionService.deriveMasterKey(
+  final masterKey = await EncryptionService.derivarMasterKey(
     'contraseña_maestra_secreta',
     base64Decode(userData['salt'] as String)
   );
 
   // Cifrar y guardar contraseña
-  final encrypted = await EncryptionService.encryptPassword('contraseña', masterKey);
+  final cifrado = await EncryptionService.cifrarPassword('contraseña', masterKey);
+
   await supabase.from('passwords').insert({
-    'hash_contrasena': encrypted['hash_contrasena'],
-    'iv': encrypted['iv'],
-    'auth_tag': encrypted['auth_tag'],
-    'user_id': user.id,
+    'hash_contrasena': cifrado['hash_contrasena'],
+    'iv': cifrado['iv'],
+    'auth_tag': cifrado['auth_tag'],
+    'user_id': usuario.id,
   });
 
   // Recuperar y descifrar
-  final data = await supabase
+  final datos = await supabase
       .from('passwords')
       .select()
-      .eq('user_id', user.id)
+      .eq('user_id', usuario.id)
       .single();
 
-  if (data['hash_contrasena'] == null || 
-    data['iv'] == null || 
-    data['auth_tag'] == null) {
+  if (datos['hash_contrasena'] == null || datos['iv'] == null || datos['auth_tag'] == null) {
     throw Exception('Registro de contraseña corrupto');
-}
+  }
 
-  final decrypted = await EncryptionService.decryptPassword(
-    hashContrasena: data['hash_contrasena'],
-    ivBytes: data['iv'],
-    authTag: data['auth_tag'],
+  final descifrado = await EncryptionService.descifrarPassword(
+    hashContrasena: datos['hash_contrasena'],
+    ivBytes: datos['iv'],
+    authTag: datos['auth_tag'],
     key: masterKey,
   );
 
-  print('Contraseña descifrada: $decrypted');
+  print('Contraseña descifrada: $descifrado');
 }
